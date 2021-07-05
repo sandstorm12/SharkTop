@@ -1,0 +1,70 @@
+FROM ubuntu:18.04
+
+RUN apt-get update && apt-get -y --no-install-recommends install \
+    nano \
+    build-essential \
+    pkg-config \
+    python3.6 \
+    python3-pip \
+    python3.6-dev \
+    python3.6-venv \
+    python-dev \
+    python3-dev
+
+RUN apt-get -y --no-install-recommends install \
+    git \
+    cmake \
+    autoconf \
+    automake \
+    libtool \
+    gstreamer-1.0 \
+    gstreamer1.0-dev \
+    libgstreamer1.0-0 \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    gstreamer1.0-doc \
+    gstreamer1.0-tools \
+    gstreamer1.0-x \
+    gstreamer1.0-gl \
+    gstreamer1.0-gtk3 \
+    python-gst-1.0 \
+    libgirepository1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libcairo2-dev \
+    gir1.2-gstreamer-1.0 \
+    python3-gi \
+    python-gi-dev
+    
+RUN git clone https://github.com/jackersson/gstreamer-python.git gp0 && \
+cd gp0 && \
+python3 -m pip install --upgrade --force-reinstall pip && \
+python3 -m pip install --upgrade --ignore-installed wheel setuptools Cython opencv-python && \
+python3 -m pip install --upgrade --ignore-installed -r requirements.txt && \
+./build-3rd-party.sh && \
+./build-gst-python.sh && \
+pip3 install . && \
+echo "creating symlink for gi:" && \
+mkdir -p /usr/lib/python3.6/dist-packages/ && \
+cd /usr/lib/python3.6/dist-packages/ && \
+ln -svT /usr/lib/python3.6/site-packages/gi /usr/lib/python3.6/dist-packages/gi
+
+# Installing GstShark
+RUN apt-get update \
+    && apt-get -y install libgstreamer1.0-dev \
+                            graphviz libgraphviz-dev \
+                            octave epstool babeltrace \
+                            gtk-doc-tools
+
+RUN git clone https://github.com/RidgeRun/gst-shark.git
+WORKDIR ./gst-shark
+RUN ./autogen.sh --prefix /usr/ --libdir /usr/lib/aarch64-linux-gnu/ || exit 0
+RUN ./autogen.sh --prefix /usr/ --libdir /usr/lib/aarch64-linux-gnu/
+RUN make -j $(nproc) && make install
+WORKDIR ../
+
+ENV GST_PLUGIN_PATH=/usr/lib/gstreamer-1.0:/usr/lib/x86_64-linux-gnu/gstreamer-1.0/
+
+RUN rm -rf ~/.cache/gstreamer-1.0/
