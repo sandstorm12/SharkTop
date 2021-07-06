@@ -21,11 +21,12 @@ close = False
 args = None
 framerate = {}
 
+
 def _update_values(process, values, refresh_rate=2):
     for line in iter(process.stdout.readline, ""):
         search = re.search(
-            "(.*)(framerate)(.*)(pad=\(string\))(.*)(,)(.*)(fps=\(uint\))(\d+)",
-            line.decode("utf-8") 
+            r"(.*)(framerate)(.*)(pad=\(string\))(.*)(,)(.*)(fps=\(uint\))(\d+)",
+            line.decode("utf-8")
         )
 
         if search is not None:
@@ -48,14 +49,15 @@ def _get_arguments():
     args = parser.parse_args()
 
     return args
-    
+
 
 def draw_menu(stdscr):
     global close
 
     k = 0
     cursor_x = 0
-    cursor_y = 0
+    cursor_y = 3
+    cursor_y_content = 0
 
     # Clear and refresh the screen for a blank canvas
     stdscr.clear()
@@ -75,10 +77,16 @@ def draw_menu(stdscr):
         height, width = stdscr.getmaxyx()
 
         if k == curses.KEY_DOWN:
-            cursor_y = min(height - 1, max(0, cursor_y + 1))
-            print("down")
+            cursor_y_content = min(
+                len(framerate.keys()), max(0, cursor_y_content + 1)
+            )
+            cursor_y = min(height - 2, max(3, cursor_y + 1))
         elif k == curses.KEY_UP:
-            cursor_y = min(height - 1, max(0, cursor_y - 1))
+            cursor_y_content = min(
+                len(framerate.keys()), max(0, cursor_y_content - 1)
+            )
+            if cursor_y_content <= height - 4:
+                cursor_y = min(height - 2, max(3, cursor_y - 1))
         elif k == curses.KEY_RIGHT:
             cursor_x = min(width - 1, max(0, cursor_x + 1))
         elif k == curses.KEY_LEFT:
@@ -87,7 +95,7 @@ def draw_menu(stdscr):
         # Render title
         stdscr.attron(curses.color_pair(4))
         stdscr.addstr(0, 0, "Pipeline:")
-        stdscr.addstr(0, 9, " " + " ".join(args.pipeline))
+        stdscr.addstr(0, 9, " " + " ".join(args.pipeline)[:width - 10])
         stdscr.attroff(curses.color_pair(4))
 
         # Render headers
@@ -98,11 +106,15 @@ def draw_menu(stdscr):
 
         # Render values
         stdscr.attron(curses.color_pair(2))
-        for i, key in enumerate(framerate.keys()):
-            stdscr.addstr(3 + i, 0, key)
-            stdscr.addstr(3 + i, width // 2, str(framerate[key]))
+        offset = max(cursor_y_content - height + 4 + 1, 0)
+        keys = list(framerate.keys())
+        for i in range(3, min(height, len(keys) - offset + 3)):
+            print(len(keys), offset)
+            key = keys[i - 3 + offset]
+            stdscr.addstr(i, 0, key)
+            stdscr.addstr(i, width // 2, str(framerate[key]))
         stdscr.attroff(curses.color_pair(2))
-        
+
         # Render status bar
         statusbarstr = "Press 'q' to exit | runtime: {:.2f}s | Pos: {}, {}".format(
             time.time() - start_time, cursor_x, cursor_y
@@ -119,9 +131,9 @@ def draw_menu(stdscr):
         stdscr.refresh()
 
         # Wait for next input
-        stdscr.nodelay(True)
+        stdscr.timeout(int(min(1 / PROP_REFRESH_RATE, .1) * 10e3))
         k = stdscr.getch()
-        time.sleep(min(1 / PROP_REFRESH_RATE, .1))
+        time.sleep(1 / 60)
 
     close = True
 
