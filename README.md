@@ -47,3 +47,4 @@ sharktop gst-launch-1.0 videotestsrc ! queue ! videoconvert ! videoscale ! autov
 3. Scrollable pipeline discription
 4. Add more tracers
 5. Add images to the readme
+6. Raw video closes on error
