@@ -14,18 +14,19 @@ import threading
 import subprocess
 
 
-PROP_REFRESH_RATE = 2
-
 start_time = None
 close = False
 args = None
 framerate = {}
 
 
-def _update_values(process, values, refresh_rate=2):
+def _update_values(process):
     for line in iter(process.stdout.readline, ""):
         search = re.search(
-            r"(.*)(framerate)(.*)(pad=\(string\))(.*)(,)(.*)(fps=\(uint\))(\d+)",
+            (
+                r"(.*)(framerate)(.*)(pad=\(string\))"
+                r"(.*)(,)(.*)(fps=\(uint\))(\d+)"
+            ),
             line.decode("utf-8")
         )
 
@@ -37,8 +38,9 @@ def _update_values(process, values, refresh_rate=2):
 def _get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-r', '--referesh-rate',
+        '-r', '--referesh_rate',
         help='Update rate per second',
+        type=int,
         default=2
     )
     parser.add_argument(
@@ -53,6 +55,7 @@ def _get_arguments():
 
 def draw_menu(stdscr):
     global close
+    global args
 
     k = 0
     cursor_x = 0
@@ -101,27 +104,48 @@ def draw_menu(stdscr):
         # Render headers
         stdscr.attron(curses.color_pair(1))
         stdscr.addstr(2, 0, "Element" + (" " * (width // 2 - 7)))
-        stdscr.addstr(2, width // 2, "Framerate" + (" " * (width // 2 - 9)))
+        stdscr.addstr(
+            2, width // 2,
+            "Framerate" + (" " * (width // 2 - 9))
+        )
         stdscr.attroff(curses.color_pair(1))
 
         # Render values
         stdscr.attron(curses.color_pair(2))
+
         offset = max(cursor_y_content - height + 4 + 1, 0)
         keys = list(framerate.keys())
         for i in range(3, min(height, len(keys) - offset + 3)):
             print(len(keys), offset)
             key = keys[i - 3 + offset]
-            stdscr.addstr(i, 0, key)
-            stdscr.addstr(i, width // 2, str(framerate[key]))
+
+            if i == cursor_y:
+                stdscr.attroff(curses.color_pair(2))
+                stdscr.attron(curses.color_pair(1))
+
+            stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
+            stdscr.addstr(
+                i, width // 2,
+                str(framerate[key]) +
+                (" " * (width // 2 - len(str(framerate[key])) - 1))
+            )
+
+            if i == cursor_y:
+                stdscr.attroff(curses.color_pair(1))
+                stdscr.attron(curses.color_pair(2))
+
         stdscr.attroff(curses.color_pair(2))
 
         # Render status bar
-        statusbarstr = "Press 'q' to exit | runtime: {:.2f}s | Pos: {}, {}".format(
-            time.time() - start_time, cursor_x, cursor_y
+        statusbarstr = "Press 'q' to exit | runtime: {:.2f}s".format(
+            time.time() - start_time
         )
         stdscr.attron(curses.color_pair(3))
         stdscr.addstr(height-1, 0, statusbarstr)
-        stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
+        stdscr.addstr(
+            height-1, len(statusbarstr),
+            " " * (width - len(statusbarstr) - 1)
+        )
         stdscr.attroff(curses.color_pair(3))
 
         # Move curser
@@ -131,17 +155,17 @@ def draw_menu(stdscr):
         stdscr.refresh()
 
         # Wait for next input
-        stdscr.timeout(int(min(1 / PROP_REFRESH_RATE, .1) * 10e3))
+        stdscr.timeout(int(min(1 / args.referesh_rate, .5) * 10e2))
         k = stdscr.getch()
         time.sleep(1 / 60)
 
     close = True
 
 
-def _initialize_update_thread(process):
+def _initialize_update_thread(process, args):
     thread = threading.Thread(
         target=_update_values,
-        args=(process, framerate, PROP_REFRESH_RATE)
+        args=(process,)
     )
     thread.daemon = True
     thread.start()
@@ -157,17 +181,10 @@ def _run_command(args):
         args.pipeline, stdout=subprocess.PIPE, env=env,
         stderr=subprocess.STDOUT
     )
-    
+
     start_time = time.time()
 
     return process
-
-
-def kill(proc_pid):
-    process = psutil.Process(proc_pid)
-    for proc in process.children(recursive=True):
-        proc.kill()
-    process.kill()
 
 
 if __name__ == "__main__":
@@ -175,9 +192,8 @@ if __name__ == "__main__":
 
     process = _run_command(args)
 
-    _initialize_update_thread(process)
+    _initialize_update_thread(process, args)
 
     curses.wrapper(draw_menu)
-    # time.sleep(10)
 
     process.kill()
