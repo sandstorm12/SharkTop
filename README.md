@@ -48,3 +48,4 @@ sharktop gst-launch-1.0 videotestsrc ! queue ! videoconvert ! videoscale ! autov
 4. Add more tracers
 5. Add images to the readme
 6. Raw video closes on error
+7. Add dynamic filter
