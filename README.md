@@ -39,5 +39,5 @@ sharktop gst-launch-1.0 videotestsrc ! videoconvert ! autovideosink sync=True
 ```
 
 
-## Issues
+## Issues and future work
 1. Install sharktop inside the dockerfile
