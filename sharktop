@@ -21,18 +21,20 @@ framerate = {}
 
 
 def _update_values(process):
+    filter_pattern = re.compile(args.pattern)
+    fps_pattern = re.compile(
+        r"(.*)(framerate)(.*)(pad=\(string\))"
+        r"(.*)(,)(.*)(fps=\(uint\))(\d+)"
+    )
     for line in iter(process.stdout.readline, ""):
-        search = re.search(
-            (
-                r"(.*)(framerate)(.*)(pad=\(string\))"
-                r"(.*)(,)(.*)(fps=\(uint\))(\d+)"
-            ),
-            line.decode("utf-8")
-        )
-
-        if search is not None:
-            if search.group(2) == "framerate":
-                framerate[search.group(5)] = search.group(9)
+        line = line.decode("utf-8")
+        if filter_pattern.search(line) is not None:
+            search = fps_pattern.search(
+                line
+            )
+            if search is not None:
+                if search.group(2) == "framerate":
+                    framerate[search.group(5)] = search.group(9)
 
 
 def _get_arguments():
@@ -42,6 +44,12 @@ def _get_arguments():
         help='Update rate per second',
         type=int,
         default=2
+    )
+    parser.add_argument(
+        '-p', '--pattern',
+        help='Pattern to match for the output',
+        type=str,
+        default=r".*"
     )
     parser.add_argument(
         'pipeline', metavar='Pipeline discription',
