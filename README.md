@@ -36,8 +36,14 @@ sharktop [pipeline]
 sharktop gst-launch-1.0 videotestsrc ! fakesink sync=True
 
 sharktop gst-launch-1.0 videotestsrc ! videoconvert ! autovideosink sync=True
+
+sharktop gst-launch-1.0 videotestsrc ! queue ! videoconvert ! videoscale ! autovideosink sync=True -p "queue|videoscale"
 ```
 
 
 ## Issues and future work
 1. Install sharktop inside the dockerfile
+2. A serious refactor is required
+3. Scrollable pipeline discription
+4. Add more tracers
+5. Add images to the readme

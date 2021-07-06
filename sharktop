@@ -5,29 +5,43 @@
 
 import os
 import re
-import sys
 import time
-import signal
 import curses
 import argparse
 import threading
 import subprocess
 
 
+PANEL_TOP = 0
+PANEL_RAW = 1
+
 start_time = None
 close = False
 args = None
+panel = PANEL_TOP
+
 framerate = {}
+raw = []
 
 
 def _update_values(process):
+    global raw
+
     filter_pattern = re.compile(args.pattern)
     fps_pattern = re.compile(
         r"(.*)(framerate)(.*)(pad=\(string\))"
         r"(.*)(,)(.*)(fps=\(uint\))(\d+)"
     )
+    ansi_pattern = re.compile(
+        r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'
+    )
+
     for line in iter(process.stdout.readline, ""):
         line = line.decode("utf-8")
+
+        raw.append(ansi_pattern.sub('', line))
+        raw = raw[-200:]
+
         if filter_pattern.search(line) is not None:
             search = fps_pattern.search(
                 line
@@ -64,10 +78,12 @@ def _get_arguments():
 def draw_menu(stdscr):
     global close
     global args
+    global panel
+    global raw
 
     k = 0
     cursor_x = 0
-    cursor_y = 3
+    cursor_y = 2
     cursor_y_content = 0
 
     # Clear and refresh the screen for a blank canvas
@@ -87,77 +103,106 @@ def draw_menu(stdscr):
         stdscr.clear()
         height, width = stdscr.getmaxyx()
 
-        if k == curses.KEY_DOWN:
-            cursor_y_content = min(
-                len(framerate.keys()), max(0, cursor_y_content + 1)
-            )
-            cursor_y = min(height - 2, max(3, cursor_y + 1))
-        elif k == curses.KEY_UP:
-            cursor_y_content = min(
-                len(framerate.keys()), max(0, cursor_y_content - 1)
-            )
-            if cursor_y_content <= height - 4:
-                cursor_y = min(height - 2, max(3, cursor_y - 1))
-        elif k == curses.KEY_RIGHT:
-            cursor_x = min(width - 1, max(0, cursor_x + 1))
-        elif k == curses.KEY_LEFT:
-            cursor_x = min(width - 1, max(0, cursor_x - 1))
+        if k == ord('r'):
+            panel = PANEL_RAW
+        elif k == ord('t'):
+            panel = PANEL_TOP
 
-        # Render title
-        stdscr.attron(curses.color_pair(4))
-        stdscr.addstr(0, 0, "Pipeline:")
-        stdscr.addstr(0, 9, " " + " ".join(args.pipeline)[:width - 10])
-        stdscr.attroff(curses.color_pair(4))
+        if panel == PANEL_TOP:
+            if k == curses.KEY_DOWN:
+                cursor_y_content = min(
+                    len(framerate.keys()), max(0, cursor_y_content + 1)
+                )
+                cursor_y = min(height - 2, max(2, cursor_y + 1))
+            elif k == curses.KEY_UP:
+                cursor_y_content = min(
+                    len(framerate.keys()), max(0, cursor_y_content - 1)
+                )
+                if cursor_y_content <= height - 5:
+                    cursor_y = min(height - 2, max(2, cursor_y - 1))
+            elif k == curses.KEY_RIGHT:
+                cursor_x = min(width - 1, max(0, cursor_x + 1))
+            elif k == curses.KEY_LEFT:
+                cursor_x = min(width - 1, max(0, cursor_x - 1))
 
-        # Render headers
-        stdscr.attron(curses.color_pair(1))
-        stdscr.addstr(2, 0, "Element" + (" " * (width // 2 - 7)))
-        stdscr.addstr(
-            2, width // 2,
-            "Framerate" + (" " * (width // 2 - 9))
-        )
-        stdscr.attroff(curses.color_pair(1))
+            # Render title
+            stdscr.attron(curses.color_pair(4))
+            stdscr.addstr(0, 0, "Pipeline:")
+            stdscr.addstr(0, 9, " " + " ".join(args.pipeline)[:width - 10])
+            stdscr.attroff(curses.color_pair(4))
 
-        # Render values
-        stdscr.attron(curses.color_pair(2))
-
-        offset = max(cursor_y_content - height + 4 + 1, 0)
-        keys = list(framerate.keys())
-        for i in range(3, min(height, len(keys) - offset + 3)):
-            print(len(keys), offset)
-            key = keys[i - 3 + offset]
-
-            if i == cursor_y:
-                stdscr.attroff(curses.color_pair(2))
-                stdscr.attron(curses.color_pair(1))
-
-            stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
+            # Render headers
+            stdscr.attron(curses.color_pair(1))
+            stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
             stdscr.addstr(
-                i, width // 2,
-                str(framerate[key]) +
-                (" " * (width // 2 - len(str(framerate[key])) - 1))
+                1, width // 2,
+                "Framerate" + (" " * (width // 2 - 9))
             )
+            stdscr.attroff(curses.color_pair(1))
 
-            if i == cursor_y:
-                stdscr.attroff(curses.color_pair(1))
-                stdscr.attron(curses.color_pair(2))
+            # Render values
+            stdscr.attron(curses.color_pair(2))
 
-        stdscr.attroff(curses.color_pair(2))
+            offset = max(cursor_y_content - height + 3 + 1, 0)
+            keys = list(framerate.keys())
+            for i in range(2, min(height, len(keys) - offset + 2)):
+                print(len(keys), offset)
+                key = keys[i - 2 + offset]
 
-        # Render status bar
-        statusbarstr = "Press 'q' to exit | runtime: {:.2f}s".format(
-            time.time() - start_time
-        )
-        stdscr.attron(curses.color_pair(3))
-        stdscr.addstr(height-1, 0, statusbarstr)
-        stdscr.addstr(
-            height-1, len(statusbarstr),
-            " " * (width - len(statusbarstr) - 1)
-        )
-        stdscr.attroff(curses.color_pair(3))
+                if i == cursor_y:
+                    stdscr.attroff(curses.color_pair(2))
+                    stdscr.attron(curses.color_pair(1))
 
-        # Move curser
-        stdscr.move(cursor_y, cursor_x)
+                stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
+                stdscr.addstr(
+                    i, width // 2,
+                    str(framerate[key]) +
+                    (" " * (width // 2 - len(str(framerate[key])) - 1))
+                )
+
+                if i == cursor_y:
+                    stdscr.attroff(curses.color_pair(1))
+                    stdscr.attron(curses.color_pair(2))
+
+            stdscr.attroff(curses.color_pair(2))
+
+            # Render status bar
+            statusbarstr = "Press 'q' to exit | 'r' to raw output | runtime: {:.2f}s".format(
+                time.time() - start_time
+            )
+            stdscr.attron(curses.color_pair(3))
+            stdscr.addstr(height-1, 0, statusbarstr)
+            stdscr.addstr(
+                height-1, len(statusbarstr),
+                " " * (width - len(statusbarstr) - 1)
+            )
+            stdscr.attroff(curses.color_pair(3))
+
+            # Move curser
+            stdscr.move(cursor_y, cursor_x)
+        else:
+            # Render title
+            stdscr.attron(curses.color_pair(4))
+            stdscr.addstr(0, 0, "Pipeline:")
+            stdscr.addstr(0, 9, " " + " ".join(args.pipeline)[:width - 10])
+            stdscr.attroff(curses.color_pair(4))
+
+            # Render raw outputs
+            for i in range(height - 2):
+                text = raw[-1 * min((height - 2 - i), len(raw))]
+                stdscr.addstr(i + 1, 0, text[:width])
+
+            # Render status bar
+            statusbarstr = "Press 'q' to exit | 't' to top screen | runtime: {:.2f}s".format(
+                time.time() - start_time
+            )
+            stdscr.attron(curses.color_pair(3))
+            stdscr.addstr(height-1, 0, statusbarstr)
+            stdscr.addstr(
+                height-1, len(statusbarstr),
+                " " * (width - len(statusbarstr) - 1)
+            )
+            stdscr.attroff(curses.color_pair(3))
 
         # Refresh the screen
         stdscr.refresh()
