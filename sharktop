@@ -36,19 +36,23 @@ def _update_values(process):
         r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'
     )
 
-    for line in iter(process.stdout.readline, ""):
-        line = line.decode("utf-8")
+    try:
+        for line in iter(process.stdout.readline):
+            line = line.decode("utf-8")
 
-        raw.append(ansi_pattern.sub('', line))
+            raw.append(ansi_pattern.sub('', line))
+            raw = raw[-200:]
+
+            if filter_pattern.search(line) is not None:
+                search = fps_pattern.search(
+                    line
+                )
+                if search is not None:
+                    if search.group(2) == "framerate":
+                        framerate[search.group(5)] = search.group(9)
+    except StopIteration:
+        raw.append("\n************ End of raw stream ***********\n")
         raw = raw[-200:]
-
-        if filter_pattern.search(line) is not None:
-            search = fps_pattern.search(
-                line
-            )
-            if search is not None:
-                if search.group(2) == "framerate":
-                    framerate[search.group(5)] = search.group(9)
 
 
 def _get_arguments():
