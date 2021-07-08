@@ -235,7 +235,7 @@ def draw_menu(stdscr):
             ).format(
                 time.time() - start_time,
                 args.pattern
-            )
+            )[-1 * width + 1:]
             stdscr.attron(curses.color_pair(3))
             stdscr.addstr(height-1, 0, statusbarstr)
             stdscr.addstr(
@@ -311,7 +311,7 @@ def draw_menu(stdscr):
             ).format(
                 time.time() - start_time,
                 args.pattern
-            )
+            )[-1 * width + 1:]
             stdscr.attron(curses.color_pair(3))
             stdscr.addstr(height-1, 0, statusbarstr)
             stdscr.addstr(
