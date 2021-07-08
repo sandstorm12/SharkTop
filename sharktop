@@ -59,22 +59,25 @@ def _update_values(process):
         raw.append(ansi_pattern.sub('', line))
         raw = raw[-200:]
 
-        if filter_pattern.search(line) is not None:
-            search = fps_pattern.search(
-                line
-            )
-            if search is not None:
-                framerate[search.group(5)] = search.group(9)
-                continue
+        # if filter_pattern.search(line) is not None:
+        search = fps_pattern.search(
+            line
+        )
+        if search is not None and \
+                filter_pattern.search(search.group(5)) is not None:
+            framerate[search.group(5)] = search.group(9)
+            continue
 
-            search = queue_level_pattern.search(
-                line
+        search = queue_level_pattern.search(
+            line
+        )
+        if search is not None and \
+                filter_pattern.search(search.group(4)) is not None and\
+                search.group(4) != "%s":
+            queue_level[search.group(4)] = (
+                search.group(7), search.group(10)
             )
-            if search is not None and search.group(4) != "%s":
-                queue_level[search.group(4)] = (
-                    search.group(7), search.group(10)
-                )
-                continue
+            continue
 
 
 def _get_arguments():
@@ -166,6 +169,7 @@ def draw_menu(stdscr):
 
                 filter_pattern = re.compile(args.pattern)
                 framerate.clear()
+                queue_level.clear()
 
         if panel == PANEL_FPS:
             if k == curses.KEY_DOWN:
