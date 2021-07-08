@@ -21,7 +21,10 @@ BAR_FILTER = 1
 start_time = None
 close = False
 args = None
-filter_pattern = None
+pattern_string_fps = None
+pattern_string_queue = None
+filter_pattern_fps = None
+filter_pattern_queue = None
 bar = BAR_NORMAL
 panel = PANEL_FPS
 
@@ -32,9 +35,11 @@ raw = []
 
 def _update_values(process):
     global raw
-    global filter_pattern
+    global filter_pattern_fps
+    global filter_pattern_queue
 
-    filter_pattern = re.compile(args.pattern)
+    filter_pattern_fps = re.compile(pattern_string_fps)
+    filter_pattern_queue = re.compile(pattern_string_queue)
     fps_pattern = re.compile(
         r"(.*)(framerate)(.*)(pad=\(string\))"
         r"(.*)(,)(.*)(fps=\(uint\))(\d+)"
@@ -59,12 +64,11 @@ def _update_values(process):
         raw.append(ansi_pattern.sub('', line))
         raw = raw[-200:]
 
-        # if filter_pattern.search(line) is not None:
         search = fps_pattern.search(
             line
         )
         if search is not None and \
-                filter_pattern.search(search.group(5)) is not None:
+                filter_pattern_fps.search(search.group(5)) is not None:
             framerate[search.group(5)] = search.group(9)
             continue
 
@@ -72,7 +76,7 @@ def _update_values(process):
             line
         )
         if search is not None and \
-                filter_pattern.search(search.group(4)) is not None and\
+                filter_pattern_queue.search(search.group(4)) is not None and\
                 search.group(4) != "%s":
             queue_level[search.group(4)] = (
                 search.group(7), search.group(10)
@@ -81,6 +85,9 @@ def _update_values(process):
 
 
 def _get_arguments():
+    global pattern_string_fps
+    global pattern_string_queue
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-r', '--referesh_rate',
@@ -101,6 +108,9 @@ def _get_arguments():
     )
     args = parser.parse_args()
 
+    pattern_string_fps = args.pattern
+    pattern_string_queue = args.pattern
+
     return args
 
 
@@ -112,7 +122,10 @@ def draw_menu(stdscr):
     global bar
     global framerate
     global queue_level
-    global filter_pattern
+    global filter_pattern_fps
+    global filter_pattern_queue
+    global pattern_string_fps
+    global pattern_string_queue
 
     k = 0
     cursor_x = 0
@@ -154,22 +167,38 @@ def draw_menu(stdscr):
                 cursor_y_content = 0
             elif k == ord('f'):
                 bar = BAR_FILTER
-                args.pattern = ""
+                if panel == PANEL_FPS:
+                    pattern_string_fps = ""
+                elif panel == PANEL_QUEUE:
+                    pattern_string_queue = ""
         else:
             if k != -1:
-                if k == curses.KEY_ENTER or k == 10 or k == 13:
-                    bar = BAR_NORMAL
-                    if args.pattern.strip() == '':
-                        args.pattern = ".*"
-                elif k == curses.KEY_BACKSPACE:
-                    if len(args.pattern) > 0:
-                        args.pattern = args.pattern[:-1]
-                else:
-                    args.pattern += chr(k)
+                if panel == PANEL_FPS:
+                    if k == curses.KEY_ENTER or k == 10 or k == 13:
+                        bar = BAR_NORMAL
+                        if pattern_string_fps.strip() == '':
+                            pattern_string_fps = ".*"
+                    elif k == curses.KEY_BACKSPACE:
+                        if len(pattern_string_fps) > 0:
+                            pattern_string_fps = pattern_string_fps[:-1]
+                    else:
+                        pattern_string_fps += chr(k)
 
-                filter_pattern = re.compile(args.pattern)
-                framerate.clear()
-                queue_level.clear()
+                    filter_pattern_fps = re.compile(pattern_string_fps)
+                    framerate.clear()
+                elif panel == PANEL_QUEUE:
+                    if k == curses.KEY_ENTER or k == 10 or k == 13:
+                        bar = BAR_NORMAL
+                        if pattern_string_queue.strip() == '':
+                            pattern_string_queue = ".*"
+                    elif k == curses.KEY_BACKSPACE:
+                        if len(pattern_string_queue) > 0:
+                            pattern_string_queue = pattern_string_queue[:-1]
+                    else:
+                        pattern_string_queue += chr(k)
+
+                    filter_pattern_queue = re.compile(pattern_string_queue)
+                    queue_level.clear()
 
         if panel == PANEL_FPS:
             if k == curses.KEY_DOWN:
@@ -234,7 +263,7 @@ def draw_menu(stdscr):
                 " | uptime: {:.2f}s | 'f' filter: {}"
             ).format(
                 time.time() - start_time,
-                args.pattern
+                pattern_string_fps
             )[-1 * width + 1:]
             stdscr.attron(curses.color_pair(3))
             stdscr.addstr(height-1, 0, statusbarstr)
@@ -310,7 +339,7 @@ def draw_menu(stdscr):
                 " | uptime: {:.2f}s | 'f' filter: {}"
             ).format(
                 time.time() - start_time,
-                args.pattern
+                pattern_string_queue
             )[-1 * width + 1:]
             stdscr.attron(curses.color_pair(3))
             stdscr.addstr(height-1, 0, statusbarstr)
