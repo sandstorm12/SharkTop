@@ -2,6 +2,8 @@
 
 A Python Curses-based UI for GstShark
 
+![Alt text](./images/fps.jpg?raw=true "FPS Panel")
+
 ## How to install
 
 1. Install GStreamer and GstShark
@@ -31,13 +33,15 @@ python3 -m pip install git+https://github.com/sandstorm12/GstShark_Curses_UI.git
 ## How to use
 
 ```bash
-sharktop [pipeline]
+sharktop [pipeline or pipeline launching code]
 
 sharktop gst-launch-1.0 videotestsrc ! fakesink sync=True
 
 sharktop gst-launch-1.0 videotestsrc ! videoconvert ! autovideosink sync=True
 
 sharktop gst-launch-1.0 videotestsrc ! queue ! videoconvert ! videoscale ! autovideosink sync=True -p "queue|videoscale"
+
+sharktop python run_pipeline.py
 ```
 
 
