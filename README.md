@@ -2,7 +2,9 @@
 
 A Python Curses-based UI for GstShark
 
-![Alt text](./images/fps.jpg?raw=true "FPS Panel")
+FPS Panel                  | QueueLevel Panel
+:-------------------------:|:-------------------------:
+![](image/fps.png)         | ![](image/queue.png)
 
 ## How to install
 
