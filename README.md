@@ -26,14 +26,14 @@ docker run -it --rm -v $(pwd):/src sharktop bash
 
 install by cloning:
 ```bash
-git clone https://github.com/sandstorm12/GstShark_Curses_UI.git sharktop
+git clone https://github.com/sandstorm12/SharkTop.git sharktop
 cd sharktop
 python3 -m pip install sharktop
 ```
 
 install directly using pip:
 ```bash
-python3 -m pip install git+https://github.com/sandstorm12/GstShark_Curses_UI.git
+python3 -m pip install git+https://github.com/sandstorm12/SharkTop.git
 ```
 
 ## How to use
