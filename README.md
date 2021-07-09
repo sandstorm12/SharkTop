@@ -26,14 +26,14 @@ docker run -it --rm -v $(pwd):/src sharktop bash
 
 install by cloning:
 ```bash
-git clone https://github.com/sandstorm12/GstShark_Curses_UI.git sharktop
+git clone https://github.com/sandstorm12/SharkTop.git sharktop
 cd sharktop
 python3 -m pip install sharktop
 ```
 
 install directly using pip:
 ```bash
-python3 -m pip install git+https://github.com/sandstorm12/GstShark_Curses_UI.git
+python3 -m pip install git+https://github.com/sandstorm12/SharkTop.git
 ```
 
 ## How to use
@@ -53,7 +53,7 @@ sharktop python run_pipeline.py
 ## Issues and future work
 1. Install sharktop inside the dockerfile by default
 2. A serious refactor is required
-3. Scrollable pipeline discription
+3. Scrollable pipeline description
 4. Add more tracers
 5. Add images to the readme
 6. Sort the lists
