@@ -6,6 +6,10 @@ FPS Panel                  | QueueLevel Panel
 :-------------------------:|:-------------------------:
 ![](image/fps.png)         | ![](image/queue.png)
 
+## Notice
+
+This is a personal project in the development phase. I'll be happy to read your bug-reports, issues, suggestions, or feature requests in the issues section.
+
 ## How to install
 
 1. Install GStreamer and GstShark
@@ -46,7 +50,6 @@ sharktop gst-launch-1.0 videotestsrc ! queue ! videoconvert ! videoscale ! autov
 sharktop python run_pipeline.py
 ```
 
-
 ## Issues and future work
 1. Install sharktop inside the dockerfile by default
 2. A serious refactor is required
@@ -54,3 +57,7 @@ sharktop python run_pipeline.py
 4. Add more tracers
 5. Add images to the readme
 6. Sort the lists
+
+
+## Contributors
+1. Hamid Mohammadi <sandstormeatwo@gmail.com>
