@@ -12,12 +12,14 @@ import subprocess
 
 
 class SharkTop(object):
+    # CONSTANTS
     PANEL_FPS = 0
     PANEL_RAW = 1
     PANEL_QUEUE = 2
     BAR_NORMAL = 0
     BAR_FILTER = 1
 
+    # Tracer patterns
     PATTERN_FPS = re.compile(
         r"(.*)(framerate)(.*)(pad=\(string\))"
         r"(.*)(,)(.*)(fps=\(uint\))(\d+)"
@@ -32,27 +34,36 @@ class SharkTop(object):
     )
 
     def __init__(self):
-        self.start_time = None
-        self.close = False
+        # Properties
         self.args = None
+        self.start_time = None
+        
+        # Filters
         self.pattern_string_fps = None
         self.pattern_string_queue = None
         self.filter_pattern_fps = None
         self.filter_pattern_queue = None
+        
+        # State
+        self.close = False
         self.bar = self.BAR_NORMAL
         self.panel = self.PANEL_FPS
 
+        # Data
+        self.raw = []
         self.framerate = {}
         self.queue_level = {}
-        self.raw = []
 
     def _update_values(self, process):
         self.filter_pattern_fps = re.compile(self.pattern_string_fps)
-        self.filter_pattern_queue = re.compile(self.pattern_string_queue)
+        self.filter_pattern_queue = \
+            re.compile(self.pattern_string_queue)
 
         for line in iter(process.stdout.readline, ''):
             if line == '':
-                self._add_to_raw_output("\n#### End of raw stream ####\n")
+                self._add_to_raw_output(
+                    "\n#### End of raw stream ####\n"
+                )
                 break
 
             line = line.decode("utf-8")
@@ -122,265 +133,356 @@ class SharkTop(object):
 
         return args
 
-    def draw_menu(self, stdscr):
-        curses.curs_set(0)
+    def _manage_panels(self, pressed_key, cursor_y, cursor_y_content):
+        if pressed_key == ord('0'):
+            self.panel = self.PANEL_FPS
+            cursor_y = 2
+            cursor_y_content = 0
+        elif pressed_key == ord('1'):
+            self.panel = self.PANEL_QUEUE
+            cursor_y = 2
+            cursor_y_content = 0
+        elif pressed_key == ord('2'):
+            self.panel = self.PANEL_RAW
+            cursor_y = 2
+            cursor_y_content = 0
+        elif pressed_key == ord('f') and self.panel != self.PANEL_RAW:
+            self.bar = self.BAR_FILTER
+            if self.panel == self.PANEL_FPS:
+                self.pattern_string_fps = ""
+            elif self.panel == self.PANEL_QUEUE:
+                self.pattern_string_queue = ""
 
-        k = 0
-        cursor_x = 0
-        cursor_y = 2
-        cursor_y_content = 0
+        return cursor_y, cursor_y_content
 
-        # Clear and refresh the screen for a blank canvas
+    def _manage_dynamic_filter(self, pressed_key):
+        if pressed_key != -1:
+            if self.panel == self.PANEL_FPS:
+                if pressed_key == curses.KEY_ENTER or \
+                        pressed_key == 10 or pressed_key == 13 or \
+                        pressed_key == 27:
+                    self.bar = self.BAR_NORMAL
+                    if self.pattern_string_fps.strip() == '':
+                        self.pattern_string_fps = ".*"
+                else:
+                    if pressed_key == curses.KEY_BACKSPACE:
+                        if len(self.pattern_string_fps) > 0:
+                            self.pattern_string_fps = \
+                                self.pattern_string_fps[:-1]
+                    else:
+                        self.pattern_string_fps += chr(pressed_key)
+
+                    self.filter_pattern_fps = re.compile(
+                        self.pattern_string_fps
+                    )
+                    self.framerate.clear()
+            elif self.panel == self.PANEL_QUEUE:
+                if pressed_key == curses.KEY_ENTER or \
+                        pressed_key == 10 or pressed_key == 13 or \
+                        pressed_key == 27:
+                    self.bar = self.BAR_NORMAL
+                    if self.pattern_string_queue.strip() == '':
+                        self.pattern_string_queue = ".*"
+                else:
+                    if pressed_key == curses.KEY_BACKSPACE:
+                        if len(self.pattern_string_queue) > 0:
+                            self.pattern_string_queue = \
+                                self.pattern_string_queue[:-1]
+                    else:
+                        self.pattern_string_queue += chr(pressed_key)
+
+                    self.filter_pattern_queue = \
+                        re.compile(self.pattern_string_queue)
+                    self.queue_level.clear()
+
+    def _update_cursor_fps(self, pressed_key, cursor_y,
+            cursor_y_content, height):
+        if pressed_key == curses.KEY_DOWN:
+            cursor_y_content = min(
+                len(self.framerate.keys()),
+                max(0, cursor_y_content + 1)
+            )
+            cursor_y = min(height - 2, max(2, cursor_y + 1))
+        elif pressed_key == curses.KEY_UP:
+            cursor_y_content = min(
+                len(self.framerate.keys()),
+                max(0, cursor_y_content - 1)
+            )
+            if cursor_y_content <= height - 5:
+                cursor_y = min(height - 2, max(2, cursor_y - 1))
+
+        return cursor_y, cursor_y_content
+
+    def _render_panel_fps(self, stdscr, pressed_key,
+            cursor_y, cursor_y_content, width, height):
+        self._render_title_fps(stdscr, width)
+
+        self._render_headers_fps(stdscr, width)
+
+        self._render_values_fps(
+            stdscr, cursor_y,
+            cursor_y_content, width, height
+        )
+
+        self._render_statusbar_fps(stdscr, width, height)
+
+    def _render_title_fps(self, stdscr, width):
+        stdscr.attron(curses.color_pair(4))
+        stdscr.addstr(0, 0, "Pipeline:")
+        stdscr.addstr(
+            0, 9, " " + " ".join(self.args.pipeline)[:width - 10]
+        )
+        stdscr.attroff(curses.color_pair(4))
+
+    def _render_headers_fps(self, stdscr, width):
+        stdscr.attron(curses.color_pair(1))
+        stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
+        stdscr.addstr(
+            1, width // 2,
+            "Framerate" + (" " * (width // 2 - 9))
+        )
+        stdscr.attroff(curses.color_pair(1))
+
+    def _render_values_fps(self, stdscr, cursor_y,
+            cursor_y_content, width, height):
+        stdscr.attron(curses.color_pair(2))
+
+        offset = max(cursor_y_content - height + 3 + 1, 0)
+        keys = list(self.framerate.keys())
+        for i in range(2, min(height, len(keys) - offset + 2)):
+            key = keys[i - 2 + offset]
+
+            if i == cursor_y:
+                stdscr.attroff(curses.color_pair(2))
+                stdscr.attron(curses.color_pair(1))
+
+            stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
+            stdscr.addstr(
+                i, width // 2,
+                str(self.framerate[key]) +
+                (" " * (width // 2 - len(str(self.framerate[key])) - 1))
+            )
+
+            if i == cursor_y:
+                stdscr.attroff(curses.color_pair(1))
+                stdscr.attron(curses.color_pair(2))
+
+        stdscr.attroff(curses.color_pair(2))
+
+    def _render_statusbar_fps(self, stdscr, width, height):
+        statusbarstr = (
+            "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
+            " | uptime: {:.2f}s | 'f' filter: {}"
+        ).format(
+            time.time() - self.start_time,
+            self.pattern_string_fps
+        )[-1 * width + 1:]
+        stdscr.attron(curses.color_pair(3))
+        stdscr.addstr(height-1, 0, statusbarstr)
+        stdscr.addstr(
+            height-1, len(statusbarstr),
+            " " * (width - len(statusbarstr) - 1)
+        )
+        stdscr.attroff(curses.color_pair(3))
+
+    def _update_cursor_queue(self, pressed_key, cursor_y,
+            cursor_y_content, height):
+        if pressed_key == curses.KEY_DOWN:
+            cursor_y_content = min(
+                len(self.queue_level.keys()),
+                max(0, cursor_y_content + 1)
+            )
+            cursor_y = min(height - 2, max(2, cursor_y + 1))
+        elif pressed_key == curses.KEY_UP:
+            cursor_y_content = min(
+                len(self.queue_level.keys()),
+                max(0, cursor_y_content - 1)
+            )
+            if cursor_y_content <= height - 5:
+                cursor_y = min(height - 2, max(2, cursor_y - 1))
+
+        return cursor_y, cursor_y_content
+
+    def _render_panel_queue(self, stdscr, pressed_key,
+            cursor_y, cursor_y_content, width, height):
+        self._render_title_queue(stdscr, width)
+
+        self._render_headers_queue(stdscr, width)
+
+        self._render_values_queue(
+            stdscr, cursor_y,
+            cursor_y_content, width, height
+        )
+
+        self._render_statusbar_queue(stdscr, width, height)
+
+    def _render_title_queue(self, stdscr, width):
+        stdscr.attron(curses.color_pair(4))
+        stdscr.addstr(0, 0, "Pipeline:")
+        stdscr.addstr(
+            0, 9, " " + " ".join(self.args.pipeline)[:width - 10]
+        )
+        stdscr.attroff(curses.color_pair(4))
+
+    def _render_headers_queue(self, stdscr, width):
+        stdscr.attron(curses.color_pair(1))
+        stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
+        stdscr.addstr(
+            1, width // 2,
+            "QueueLevel" + (" " * (width // 2 - 10))
+        )
+        stdscr.attroff(curses.color_pair(1))
+
+    def _render_values_queue(self, stdscr, cursor_y,
+            cursor_y_content, width, height):
+        stdscr.attron(curses.color_pair(2))
+
+        offset = max(cursor_y_content - height + 3 + 1, 0)
+        keys = list(self.queue_level.keys())
+        for i in range(2, min(height, len(keys) - offset + 2)):
+            key = keys[i - 2 + offset]
+
+            if i == cursor_y:
+                stdscr.attroff(curses.color_pair(2))
+                stdscr.attron(curses.color_pair(1))
+
+            stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
+            text = \
+                self.queue_level[key][0] + "/" + \
+                self.queue_level[key][1]
+            stdscr.addstr(
+                i, width // 2,
+                text +
+                (" " * (width // 2 - len(text) - 1))
+            )
+
+            if i == cursor_y:
+                stdscr.attroff(curses.color_pair(1))
+                stdscr.attron(curses.color_pair(2))
+
+        stdscr.attroff(curses.color_pair(2))
+
+    def _render_statusbar_queue(self, stdscr, width, height):
+        statusbarstr = (
+            "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
+            " | uptime: {:.2f}s | 'f' filter: {}"
+        ).format(
+            time.time() - self.start_time,
+            self.pattern_string_queue
+        )[-1 * width + 1:]
+        stdscr.attron(curses.color_pair(3))
+        stdscr.addstr(height-1, 0, statusbarstr)
+        stdscr.addstr(
+            height-1, len(statusbarstr),
+            " " * (width - len(statusbarstr) - 1)
+        )
+        stdscr.attroff(curses.color_pair(3))
+
+    def _render_panel_raw(self, stdscr, width, height):
+        # Render title
+        stdscr.attron(curses.color_pair(4))
+        stdscr.addstr(0, 0, "Pipeline:")
+        stdscr.addstr(
+            0, 9, " " + " ".join(self.args.pipeline)[:width - 10]
+        )
+        stdscr.attroff(curses.color_pair(4))
+
+        # Render raw outputs
+        for i in range(min(height - 2, len(self.raw))):
+            text = self.raw[-1 * min((height - 2 - i), len(self.raw))]
+            stdscr.addstr(i + 1, 0, text[:width])
+
+        # Render status bar
+        statusbarstr = (
+            "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
+            " | uptime: {:.2f}s"
+        ).format(
+            time.time() - self.start_time
+        )
+        stdscr.attron(curses.color_pair(3))
+        stdscr.addstr(height-1, 0, statusbarstr)
+        stdscr.addstr(
+            height-1, len(statusbarstr),
+            " " * (width - len(statusbarstr) - 1)
+        )
+        stdscr.attroff(curses.color_pair(3))
+
+    def _clear_refresh(self, stdscr):
         stdscr.clear()
         stdscr.refresh()
 
-        # Start colors in curses
+    def _initialize_colors(self):
         curses.start_color()
         curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_WHITE)
         curses.init_pair(2, curses.COLOR_BLUE, curses.COLOR_BLACK)
         curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
         curses.init_pair(4, curses.COLOR_RED, curses.COLOR_YELLOW)
 
-        # Loop where k is the last character pressed
-        while (not (k == ord('q') and self.bar == self.BAR_NORMAL)):
-            # Initialization
-            stdscr.clear()
-            height, width = stdscr.getmaxyx()
+    def _initialize_window(self, stdscr):
+        stdscr.clear()
+        height, width = stdscr.getmaxyx()
+
+        return height, width
+
+    def _update_window(self, stdscr):
+        stdscr.refresh()
+
+        # Wait for next input
+        stdscr.timeout(
+            int(min(1 / self.args.referesh_rate, .5) * 10e2)
+        )
+        pressed_key = stdscr.getch()
+        curses.napms(int(1000 / 120))
+
+        return pressed_key
+
+    def _stop_update_thread(self):
+        self.close = True
+
+    def draw_menu(self, stdscr):
+        curses.curs_set(0)
+
+        pressed_key = 0
+        cursor_x = 0
+        cursor_y = 2
+        cursor_y_content = 0
+        
+        self._clear_refresh(stdscr)
+        self._initialize_colors()
+
+        while not (pressed_key == ord('q') and \
+                self.bar == self.BAR_NORMAL):
+            height, width = self._initialize_window(stdscr)
 
             if self.bar == self.BAR_NORMAL:
-                if k == ord('0'):
-                    self.panel = self.PANEL_FPS
-                    cursor_x = 0
-                    cursor_y = 2
-                    cursor_y_content = 0
-                elif k == ord('1'):
-                    self.panel = self.PANEL_QUEUE
-                    cursor_x = 0
-                    cursor_y = 2
-                    cursor_y_content = 0
-                elif k == ord('2'):
-                    self.panel = self.PANEL_RAW
-                    cursor_x = 0
-                    cursor_y = 2
-                    cursor_y_content = 0
-                elif k == ord('f') and self.panel != self.PANEL_RAW:
-                    self.bar = self.BAR_FILTER
-                    if self.panel == self.PANEL_FPS:
-                        self.pattern_string_fps = ""
-                    elif self.panel == self.PANEL_QUEUE:
-                        self.pattern_string_queue = ""
+                cursor_y, cursor_y_content = self._manage_panels(
+                    pressed_key, cursor_y, cursor_y_content
+                )
             else:
-                if k != -1:
-                    if self.panel == self.PANEL_FPS:
-                        if k == curses.KEY_ENTER or k == 10 or k == 13:
-                            self.bar = self.BAR_NORMAL
-                            if self.pattern_string_fps.strip() == '':
-                                self.pattern_string_fps = ".*"
-                        elif k == curses.KEY_BACKSPACE:
-                            if len(self.pattern_string_fps) > 0:
-                                self.pattern_string_fps = self.pattern_string_fps[:-1]
-                        else:
-                            self.pattern_string_fps += chr(k)
-
-                        self.filter_pattern_fps = re.compile(self.pattern_string_fps)
-                        self.framerate.clear()
-                    elif self.panel == self.PANEL_QUEUE:
-                        if k == curses.KEY_ENTER or k == 10 or k == 13:
-                            self.bar = self.BAR_NORMAL
-                            if self.pattern_string_queue.strip() == '':
-                                self.pattern_string_queue = ".*"
-                        elif k == curses.KEY_BACKSPACE:
-                            if len(self.pattern_string_queue) > 0:
-                                self.pattern_string_queue = self.pattern_string_queue[:-1]
-                        else:
-                            self.pattern_string_queue += chr(k)
-
-                        self.filter_pattern_queue = re.compile(self.pattern_string_queue)
-                        self.queue_level.clear()
+                self._manage_dynamic_filter(pressed_key)
 
             if self.panel == self.PANEL_FPS:
-                if k == curses.KEY_DOWN:
-                    cursor_y_content = min(
-                        len(self.framerate.keys()), max(0, cursor_y_content + 1)
-                    )
-                    cursor_y = min(height - 2, max(2, cursor_y + 1))
-                elif k == curses.KEY_UP:
-                    cursor_y_content = min(
-                        len(self.framerate.keys()), max(0, cursor_y_content - 1)
-                    )
-                    if cursor_y_content <= height - 5:
-                        cursor_y = min(height - 2, max(2, cursor_y - 1))
-
-                # Render title
-                stdscr.attron(curses.color_pair(4))
-                stdscr.addstr(0, 0, "Pipeline:")
-                stdscr.addstr(0, 9, " " + " ".join(self.args.pipeline)[:width - 10])
-                stdscr.attroff(curses.color_pair(4))
-
-                # Render headers
-                stdscr.attron(curses.color_pair(1))
-                stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
-                stdscr.addstr(
-                    1, width // 2,
-                    "Framerate" + (" " * (width // 2 - 9))
+                cursor_y, cursor_y_content = self._update_cursor_fps(
+                    pressed_key, cursor_y, cursor_y_content, height
                 )
-                stdscr.attroff(curses.color_pair(1))
-
-                # Render values
-                stdscr.attron(curses.color_pair(2))
-
-                offset = max(cursor_y_content - height + 3 + 1, 0)
-                keys = list(self.framerate.keys())
-                for i in range(2, min(height, len(keys) - offset + 2)):
-                    key = keys[i - 2 + offset]
-
-                    if i == cursor_y:
-                        stdscr.attroff(curses.color_pair(2))
-                        stdscr.attron(curses.color_pair(1))
-
-                    stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
-                    stdscr.addstr(
-                        i, width // 2,
-                        str(self.framerate[key]) +
-                        (" " * (width // 2 - len(str(self.framerate[key])) - 1))
-                    )
-
-                    if i == cursor_y:
-                        stdscr.attroff(curses.color_pair(1))
-                        stdscr.attron(curses.color_pair(2))
-
-                stdscr.attroff(curses.color_pair(2))
-
-                # Render status bar
-                statusbarstr = (
-                    "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
-                    " | uptime: {:.2f}s | 'f' filter: {}"
-                ).format(
-                    time.time() - self.start_time,
-                    self.pattern_string_fps
-                )[-1 * width + 1:]
-                stdscr.attron(curses.color_pair(3))
-                stdscr.addstr(height-1, 0, statusbarstr)
-                stdscr.addstr(
-                    height-1, len(statusbarstr),
-                    " " * (width - len(statusbarstr) - 1)
+                self._render_panel_fps(
+                    stdscr, pressed_key, cursor_y, cursor_y_content,
+                    width, height
                 )
-                stdscr.attroff(curses.color_pair(3))
-
-                # Move curser
-                stdscr.move(cursor_y, cursor_x)
             if self.panel == self.PANEL_QUEUE:
-                if k == curses.KEY_DOWN:
-                    cursor_y_content = min(
-                        len(self.queue_level.keys()), max(0, cursor_y_content + 1)
-                    )
-                    cursor_y = min(height - 2, max(2, cursor_y + 1))
-                elif k == curses.KEY_UP:
-                    cursor_y_content = min(
-                        len(self.queue_level.keys()), max(0, cursor_y_content - 1)
-                    )
-                    if cursor_y_content <= height - 5:
-                        cursor_y = min(height - 2, max(2, cursor_y - 1))
-                elif k == curses.KEY_RIGHT:
-                    cursor_x = min(width - 1, max(0, cursor_x + 1))
-                elif k == curses.KEY_LEFT:
-                    cursor_x = min(width - 1, max(0, cursor_x - 1))
-
-                # Render title
-                stdscr.attron(curses.color_pair(4))
-                stdscr.addstr(0, 0, "Pipeline:")
-                stdscr.addstr(0, 9, " " + " ".join(self.args.pipeline)[:width - 10])
-                stdscr.attroff(curses.color_pair(4))
-
-                # Render headers
-                stdscr.attron(curses.color_pair(1))
-                stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
-                stdscr.addstr(
-                    1, width // 2,
-                    "QueueLevel" + (" " * (width // 2 - 10))
+                cursor_y, cursor_y_content = self._update_cursor_queue(
+                    pressed_key, cursor_y, cursor_y_content, height
                 )
-                stdscr.attroff(curses.color_pair(1))
-
-                # Render values
-                stdscr.attron(curses.color_pair(2))
-
-                offset = max(cursor_y_content - height + 3 + 1, 0)
-                keys = list(self.queue_level.keys())
-                for i in range(2, min(height, len(keys) - offset + 2)):
-                    key = keys[i - 2 + offset]
-
-                    if i == cursor_y:
-                        stdscr.attroff(curses.color_pair(2))
-                        stdscr.attron(curses.color_pair(1))
-
-                    stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
-                    text = self.queue_level[key][0] + "/" + self.queue_level[key][1]
-                    stdscr.addstr(
-                        i, width // 2,
-                        text +
-                        (" " * (width // 2 - len(text) - 1))
-                    )
-
-                    if i == cursor_y:
-                        stdscr.attroff(curses.color_pair(1))
-                        stdscr.attron(curses.color_pair(2))
-
-                stdscr.attroff(curses.color_pair(2))
-
-                # Render status bar
-                statusbarstr = (
-                    "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
-                    " | uptime: {:.2f}s | 'f' filter: {}"
-                ).format(
-                    time.time() - self.start_time,
-                    self.pattern_string_queue
-                )[-1 * width + 1:]
-                stdscr.attron(curses.color_pair(3))
-                stdscr.addstr(height-1, 0, statusbarstr)
-                stdscr.addstr(
-                    height-1, len(statusbarstr),
-                    " " * (width - len(statusbarstr) - 1)
+                self._render_panel_queue(
+                    stdscr, pressed_key, cursor_y, cursor_y_content,
+                    width, height
                 )
-                stdscr.attroff(curses.color_pair(3))
-
-                # Move curser
-                stdscr.move(cursor_y, cursor_x)
             elif self.panel == self.PANEL_RAW:
-                # Render title
-                stdscr.attron(curses.color_pair(4))
-                stdscr.addstr(0, 0, "Pipeline:")
-                stdscr.addstr(0, 9, " " + " ".join(self.args.pipeline)[:width - 10])
-                stdscr.attroff(curses.color_pair(4))
+                self._render_panel_raw(stdscr, width, height)
 
-                # Render raw outputs
-                for i in range(min(height - 2, len(self.raw))):
-                    text = self.raw[-1 * min((height - 2 - i), len(self.raw))]
-                    stdscr.addstr(i + 1, 0, text[:width])
+            pressed_key = self._update_window(stdscr)
 
-                # Render status bar
-                statusbarstr = (
-                    "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
-                    " | uptime: {:.2f}s"
-                ).format(
-                    time.time() - self.start_time
-                )
-                stdscr.attron(curses.color_pair(3))
-                stdscr.addstr(height-1, 0, statusbarstr)
-                stdscr.addstr(
-                    height-1, len(statusbarstr),
-                    " " * (width - len(statusbarstr) - 1)
-                )
-                stdscr.attroff(curses.color_pair(3))
-
-            # Refresh the screen
-            stdscr.refresh()
-
-            # Wait for next input
-            stdscr.timeout(int(min(1 / self.args.referesh_rate, .5) * 10e2))
-            k = stdscr.getch()
-            curses.napms(int(1000 / 120))
-
-        close = True
+        self._stop_update_thread()
 
     def _initialize_update_thread(self, process, args):
         thread = threading.Thread(
