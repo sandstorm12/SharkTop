@@ -53,7 +53,7 @@ sharktop python run_pipeline.py
 ## Issues and future work
 1. Install sharktop inside the dockerfile by default
 2. A serious refactor is required
-3. Scrollable pipeline discription
+3. Scrollable pipeline description
 4. Add more tracers
 5. Add images to the readme
 6. Sort the lists
