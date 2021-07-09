@@ -43,9 +43,9 @@ sharktop [pipeline or pipeline launching code]
 
 sharktop gst-launch-1.0 videotestsrc ! fakesink sync=True
 
-sharktop gst-launch-1.0 videotestsrc ! videoconvert ! autovideosink sync=True
+sharktop gst-launch-1.0 uridecodebin uri="rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov" ! queue ! videoconvert ! fakesink sync=True
 
-sharktop gst-launch-1.0 videotestsrc ! queue ! videoconvert ! videoscale ! autovideosink sync=True -p "queue|videoscale"
+sharktop gst-launch-1.0 uridecodebin uri="rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov" ! queue ! videoconvert ! fakesink sync=True -p "queue|videoconvert"
 
 sharktop python run_pipeline.py
 ```
