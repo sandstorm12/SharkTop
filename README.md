@@ -42,10 +42,9 @@ sharktop gst-launch-1.0 videotestsrc ! queue ! videoconvert ! videoscale ! autov
 
 
 ## Issues and future work
-1. Install sharktop inside the dockerfile
+1. Install sharktop inside the dockerfile by default
 2. A serious refactor is required
 3. Scrollable pipeline discription
 4. Add more tracers
 5. Add images to the readme
-6. Raw video closes on error
-7. Add dynamic filter
+6. Sort the lists

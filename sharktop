@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-
 # Based on example by https://gist.github.com/claymcleod
 
 
@@ -12,415 +11,412 @@ import threading
 import subprocess
 
 
-PANEL_FPS = 0
-PANEL_RAW = 1
-PANEL_QUEUE = 2
-BAR_NORMAL = 0
-BAR_FILTER = 1
+class SharkTop(object):
+    PANEL_FPS = 0
+    PANEL_RAW = 1
+    PANEL_QUEUE = 2
+    BAR_NORMAL = 0
+    BAR_FILTER = 1
 
-start_time = None
-close = False
-args = None
-pattern_string_fps = None
-pattern_string_queue = None
-filter_pattern_fps = None
-filter_pattern_queue = None
-bar = BAR_NORMAL
-panel = PANEL_FPS
-
-framerate = {}
-queue_level = {}
-raw = []
-
-
-def _update_values(process):
-    global raw
-    global filter_pattern_fps
-    global filter_pattern_queue
-
-    filter_pattern_fps = re.compile(pattern_string_fps)
-    filter_pattern_queue = re.compile(pattern_string_queue)
-    fps_pattern = re.compile(
+    PATTERN_FPS = re.compile(
         r"(.*)(framerate)(.*)(pad=\(string\))"
         r"(.*)(,)(.*)(fps=\(uint\))(\d+)"
     )
-    queue_level_pattern = re.compile(
+    PATTERN_QUEUE_LEVEL = re.compile(
         r"(.*)(queuelevel,)(.*queue=\(string\))(.*?)(,.*)"
         r"(size_buffers=\(uint\))(.*?)(,.*)(max_size_buffers=\(uint\))"
         r"(.*?)(,.*)"
     )
-    ansi_pattern = re.compile(
+    PATTERN_ANSI = re.compile(
         r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'
     )
 
-    for line in iter(process.stdout.readline, ''):
-        if line == '':
-            raw.append("\n************ End of raw stream ***********\n")
-            raw = raw[-200:]
-            break
+    def __init__(self):
+        self.start_time = None
+        self.close = False
+        self.args = None
+        self.pattern_string_fps = None
+        self.pattern_string_queue = None
+        self.filter_pattern_fps = None
+        self.filter_pattern_queue = None
+        self.bar = self.BAR_NORMAL
+        self.panel = self.PANEL_FPS
 
-        line = line.decode("utf-8")
+        self.framerate = {}
+        self.queue_level = {}
+        self.raw = []
 
-        raw.append(ansi_pattern.sub('', line))
-        raw = raw[-200:]
+    def _update_values(self, process):
+        self.filter_pattern_fps = re.compile(self.pattern_string_fps)
+        self.filter_pattern_queue = re.compile(self.pattern_string_queue)
 
-        search = fps_pattern.search(
+        for line in iter(process.stdout.readline, ''):
+            if line == '':
+                self._add_to_raw_output("\n#### End of raw stream ####\n")
+                break
+
+            line = line.decode("utf-8")
+
+            self._add_to_raw_output(self.PATTERN_ANSI.sub('', line))
+
+            not self._parse_fps(line) and not self._parse_queue(line)
+
+    def _add_to_raw_output(self, text):
+        self.raw.append(text)
+        self.raw = self.raw[-200:]
+
+    def _parse_fps(self, line):
+        matched = False
+
+        search_fps = self.PATTERN_FPS.search(
             line
         )
-        if search is not None and \
-                filter_pattern_fps.search(search.group(5)) is not None:
-            framerate[search.group(5)] = search.group(9)
-            continue
+        if search_fps is not None and \
+                self.filter_pattern_fps.search(
+                    search_fps.group(5)) is not None:
+            self.framerate[search_fps.group(5)] = search_fps.group(9)
+            matched = True
 
-        search = queue_level_pattern.search(
+        return matched
+
+    def _parse_queue(self, line):
+        matched = False
+        
+        search_queue = self.PATTERN_QUEUE_LEVEL.search(
             line
         )
-        if search is not None and \
-                filter_pattern_queue.search(search.group(4)) is not None and\
-                search.group(4) != "%s":
-            queue_level[search.group(4)] = (
-                search.group(7), search.group(10)
+        if search_queue is not None and \
+                self.filter_pattern_queue.search(
+                    search_queue.group(4)) is not None and \
+                search_queue.group(4) != "%s":
+            self.queue_level[search_queue.group(4)] = (
+                search_queue.group(7), search_queue.group(10)
             )
-            continue
+            matched = True
 
+        return matched
 
-def _get_arguments():
-    global pattern_string_fps
-    global pattern_string_queue
+    def _get_arguments(self):
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            '-r', '--referesh_rate',
+            help='Update rate per second',
+            type=int,
+            default=2
+        )
+        parser.add_argument(
+            '-p', '--pattern',
+            help='Pattern to match for the output',
+            type=str,
+            default=r".*"
+        )
+        parser.add_argument(
+            'pipeline', metavar='Pipeline discription',
+            type=str, nargs='+',
+            help='Command to run GStreamer pipeline'
+        )
+        args = parser.parse_args()
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-r', '--referesh_rate',
-        help='Update rate per second',
-        type=int,
-        default=2
-    )
-    parser.add_argument(
-        '-p', '--pattern',
-        help='Pattern to match for the output',
-        type=str,
-        default=r".*"
-    )
-    parser.add_argument(
-        'pipeline', metavar='Pipeline discription',
-        type=str, nargs='+',
-        help='Command to run GStreamer pipeline'
-    )
-    args = parser.parse_args()
+        self.pattern_string_fps = args.pattern
+        self.pattern_string_queue = args.pattern
 
-    pattern_string_fps = args.pattern
-    pattern_string_queue = args.pattern
+        return args
 
-    return args
+    def draw_menu(self, stdscr):
+        curses.curs_set(0)
 
+        k = 0
+        cursor_x = 0
+        cursor_y = 2
+        cursor_y_content = 0
 
-def draw_menu(stdscr):
-    global close
-    global args
-    global panel
-    global raw
-    global bar
-    global framerate
-    global queue_level
-    global filter_pattern_fps
-    global filter_pattern_queue
-    global pattern_string_fps
-    global pattern_string_queue
-
-    k = 0
-    cursor_x = 0
-    cursor_y = 2
-    cursor_y_content = 0
-
-    # Clear and refresh the screen for a blank canvas
-    stdscr.clear()
-    stdscr.refresh()
-
-    # Start colors in curses
-    curses.start_color()
-    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_WHITE)
-    curses.init_pair(2, curses.COLOR_BLUE, curses.COLOR_BLACK)
-    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
-    curses.init_pair(4, curses.COLOR_RED, curses.COLOR_YELLOW)
-
-    # Loop where k is the last character pressed
-    while (not (k == ord('q') and bar == BAR_NORMAL)):
-        # Initialization
+        # Clear and refresh the screen for a blank canvas
         stdscr.clear()
-        height, width = stdscr.getmaxyx()
-
-        if bar == BAR_NORMAL:
-            if k == ord('0'):
-                panel = PANEL_FPS
-                cursor_x = 0
-                cursor_y = 2
-                cursor_y_content = 0
-            elif k == ord('1'):
-                panel = PANEL_QUEUE
-                cursor_x = 0
-                cursor_y = 2
-                cursor_y_content = 0
-            elif k == ord('2'):
-                panel = PANEL_RAW
-                cursor_x = 0
-                cursor_y = 2
-                cursor_y_content = 0
-            elif k == ord('f'):
-                bar = BAR_FILTER
-                if panel == PANEL_FPS:
-                    pattern_string_fps = ""
-                elif panel == PANEL_QUEUE:
-                    pattern_string_queue = ""
-        else:
-            if k != -1:
-                if panel == PANEL_FPS:
-                    if k == curses.KEY_ENTER or k == 10 or k == 13:
-                        bar = BAR_NORMAL
-                        if pattern_string_fps.strip() == '':
-                            pattern_string_fps = ".*"
-                    elif k == curses.KEY_BACKSPACE:
-                        if len(pattern_string_fps) > 0:
-                            pattern_string_fps = pattern_string_fps[:-1]
-                    else:
-                        pattern_string_fps += chr(k)
-
-                    filter_pattern_fps = re.compile(pattern_string_fps)
-                    framerate.clear()
-                elif panel == PANEL_QUEUE:
-                    if k == curses.KEY_ENTER or k == 10 or k == 13:
-                        bar = BAR_NORMAL
-                        if pattern_string_queue.strip() == '':
-                            pattern_string_queue = ".*"
-                    elif k == curses.KEY_BACKSPACE:
-                        if len(pattern_string_queue) > 0:
-                            pattern_string_queue = pattern_string_queue[:-1]
-                    else:
-                        pattern_string_queue += chr(k)
-
-                    filter_pattern_queue = re.compile(pattern_string_queue)
-                    queue_level.clear()
-
-        if panel == PANEL_FPS:
-            if k == curses.KEY_DOWN:
-                cursor_y_content = min(
-                    len(framerate.keys()), max(0, cursor_y_content + 1)
-                )
-                cursor_y = min(height - 2, max(2, cursor_y + 1))
-            elif k == curses.KEY_UP:
-                cursor_y_content = min(
-                    len(framerate.keys()), max(0, cursor_y_content - 1)
-                )
-                if cursor_y_content <= height - 5:
-                    cursor_y = min(height - 2, max(2, cursor_y - 1))
-            elif k == curses.KEY_RIGHT:
-                cursor_x = min(width - 1, max(0, cursor_x + 1))
-            elif k == curses.KEY_LEFT:
-                cursor_x = min(width - 1, max(0, cursor_x - 1))
-
-            # Render title
-            stdscr.attron(curses.color_pair(4))
-            stdscr.addstr(0, 0, "Pipeline:")
-            stdscr.addstr(0, 9, " " + " ".join(args.pipeline)[:width - 10])
-            stdscr.attroff(curses.color_pair(4))
-
-            # Render headers
-            stdscr.attron(curses.color_pair(1))
-            stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
-            stdscr.addstr(
-                1, width // 2,
-                "Framerate" + (" " * (width // 2 - 9))
-            )
-            stdscr.attroff(curses.color_pair(1))
-
-            # Render values
-            stdscr.attron(curses.color_pair(2))
-
-            offset = max(cursor_y_content - height + 3 + 1, 0)
-            keys = list(framerate.keys())
-            for i in range(2, min(height, len(keys) - offset + 2)):
-                key = keys[i - 2 + offset]
-
-                if i == cursor_y:
-                    stdscr.attroff(curses.color_pair(2))
-                    stdscr.attron(curses.color_pair(1))
-
-                stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
-                stdscr.addstr(
-                    i, width // 2,
-                    str(framerate[key]) +
-                    (" " * (width // 2 - len(str(framerate[key])) - 1))
-                )
-
-                if i == cursor_y:
-                    stdscr.attroff(curses.color_pair(1))
-                    stdscr.attron(curses.color_pair(2))
-
-            stdscr.attroff(curses.color_pair(2))
-
-            # Render status bar
-            statusbarstr = (
-                "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
-                " | uptime: {:.2f}s | 'f' filter: {}"
-            ).format(
-                time.time() - start_time,
-                pattern_string_fps
-            )[-1 * width + 1:]
-            stdscr.attron(curses.color_pair(3))
-            stdscr.addstr(height-1, 0, statusbarstr)
-            stdscr.addstr(
-                height-1, len(statusbarstr),
-                " " * (width - len(statusbarstr) - 1)
-            )
-            stdscr.attroff(curses.color_pair(3))
-
-            # Move curser
-            stdscr.move(cursor_y, cursor_x)
-        if panel == PANEL_QUEUE:
-            if k == curses.KEY_DOWN:
-                cursor_y_content = min(
-                    len(queue_level.keys()), max(0, cursor_y_content + 1)
-                )
-                cursor_y = min(height - 2, max(2, cursor_y + 1))
-            elif k == curses.KEY_UP:
-                cursor_y_content = min(
-                    len(queue_level.keys()), max(0, cursor_y_content - 1)
-                )
-                if cursor_y_content <= height - 5:
-                    cursor_y = min(height - 2, max(2, cursor_y - 1))
-            elif k == curses.KEY_RIGHT:
-                cursor_x = min(width - 1, max(0, cursor_x + 1))
-            elif k == curses.KEY_LEFT:
-                cursor_x = min(width - 1, max(0, cursor_x - 1))
-
-            # Render title
-            stdscr.attron(curses.color_pair(4))
-            stdscr.addstr(0, 0, "Pipeline:")
-            stdscr.addstr(0, 9, " " + " ".join(args.pipeline)[:width - 10])
-            stdscr.attroff(curses.color_pair(4))
-
-            # Render headers
-            stdscr.attron(curses.color_pair(1))
-            stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
-            stdscr.addstr(
-                1, width // 2,
-                "QueueLevel" + (" " * (width // 2 - 10))
-            )
-            stdscr.attroff(curses.color_pair(1))
-
-            # Render values
-            stdscr.attron(curses.color_pair(2))
-
-            offset = max(cursor_y_content - height + 3 + 1, 0)
-            keys = list(queue_level.keys())
-            for i in range(2, min(height, len(keys) - offset + 2)):
-                key = keys[i - 2 + offset]
-
-                if i == cursor_y:
-                    stdscr.attroff(curses.color_pair(2))
-                    stdscr.attron(curses.color_pair(1))
-
-                stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
-                text = queue_level[key][0] + "/" + queue_level[key][1]
-                stdscr.addstr(
-                    i, width // 2,
-                    text +
-                    (" " * (width // 2 - len(text) - 1))
-                )
-
-                if i == cursor_y:
-                    stdscr.attroff(curses.color_pair(1))
-                    stdscr.attron(curses.color_pair(2))
-
-            stdscr.attroff(curses.color_pair(2))
-
-            # Render status bar
-            statusbarstr = (
-                "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
-                " | uptime: {:.2f}s | 'f' filter: {}"
-            ).format(
-                time.time() - start_time,
-                pattern_string_queue
-            )[-1 * width + 1:]
-            stdscr.attron(curses.color_pair(3))
-            stdscr.addstr(height-1, 0, statusbarstr)
-            stdscr.addstr(
-                height-1, len(statusbarstr),
-                " " * (width - len(statusbarstr) - 1)
-            )
-            stdscr.attroff(curses.color_pair(3))
-
-            # Move curser
-            stdscr.move(cursor_y, cursor_x)
-        elif panel == PANEL_RAW:
-            # Render title
-            stdscr.attron(curses.color_pair(4))
-            stdscr.addstr(0, 0, "Pipeline:")
-            stdscr.addstr(0, 9, " " + " ".join(args.pipeline)[:width - 10])
-            stdscr.attroff(curses.color_pair(4))
-
-            # Render raw outputs
-            for i in range(min(height - 2, len(raw))):
-                text = raw[-1 * min((height - 2 - i), len(raw))]
-                stdscr.addstr(i + 1, 0, text[:width])
-
-            # Render status bar
-            statusbarstr = (
-                "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
-                " | uptime: {:.2f}s"
-            ).format(
-                time.time() - start_time
-            )
-            stdscr.attron(curses.color_pair(3))
-            stdscr.addstr(height-1, 0, statusbarstr)
-            stdscr.addstr(
-                height-1, len(statusbarstr),
-                " " * (width - len(statusbarstr) - 1)
-            )
-            stdscr.attroff(curses.color_pair(3))
-
-        # Refresh the screen
         stdscr.refresh()
 
-        # Wait for next input
-        stdscr.timeout(int(min(1 / args.referesh_rate, .5) * 10e2))
-        k = stdscr.getch()
-        time.sleep(1 / 60)
+        # Start colors in curses
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_WHITE)
+        curses.init_pair(2, curses.COLOR_BLUE, curses.COLOR_BLACK)
+        curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
+        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_YELLOW)
 
-    close = True
+        # Loop where k is the last character pressed
+        while (not (k == ord('q') and self.bar == self.BAR_NORMAL)):
+            # Initialization
+            stdscr.clear()
+            height, width = stdscr.getmaxyx()
+
+            if self.bar == self.BAR_NORMAL:
+                if k == ord('0'):
+                    self.panel = self.PANEL_FPS
+                    cursor_x = 0
+                    cursor_y = 2
+                    cursor_y_content = 0
+                elif k == ord('1'):
+                    self.panel = self.PANEL_QUEUE
+                    cursor_x = 0
+                    cursor_y = 2
+                    cursor_y_content = 0
+                elif k == ord('2'):
+                    self.panel = self.PANEL_RAW
+                    cursor_x = 0
+                    cursor_y = 2
+                    cursor_y_content = 0
+                elif k == ord('f') and self.panel != self.PANEL_RAW:
+                    self.bar = self.BAR_FILTER
+                    if self.panel == self.PANEL_FPS:
+                        self.pattern_string_fps = ""
+                    elif self.panel == self.PANEL_QUEUE:
+                        self.pattern_string_queue = ""
+            else:
+                if k != -1:
+                    if self.panel == self.PANEL_FPS:
+                        if k == curses.KEY_ENTER or k == 10 or k == 13:
+                            self.bar = self.BAR_NORMAL
+                            if self.pattern_string_fps.strip() == '':
+                                self.pattern_string_fps = ".*"
+                        elif k == curses.KEY_BACKSPACE:
+                            if len(self.pattern_string_fps) > 0:
+                                self.pattern_string_fps = self.pattern_string_fps[:-1]
+                        else:
+                            self.pattern_string_fps += chr(k)
+
+                        self.filter_pattern_fps = re.compile(self.pattern_string_fps)
+                        self.framerate.clear()
+                    elif self.panel == self.PANEL_QUEUE:
+                        if k == curses.KEY_ENTER or k == 10 or k == 13:
+                            self.bar = self.BAR_NORMAL
+                            if self.pattern_string_queue.strip() == '':
+                                self.pattern_string_queue = ".*"
+                        elif k == curses.KEY_BACKSPACE:
+                            if len(self.pattern_string_queue) > 0:
+                                self.pattern_string_queue = self.pattern_string_queue[:-1]
+                        else:
+                            self.pattern_string_queue += chr(k)
+
+                        self.filter_pattern_queue = re.compile(self.pattern_string_queue)
+                        self.queue_level.clear()
+
+            if self.panel == self.PANEL_FPS:
+                if k == curses.KEY_DOWN:
+                    cursor_y_content = min(
+                        len(self.framerate.keys()), max(0, cursor_y_content + 1)
+                    )
+                    cursor_y = min(height - 2, max(2, cursor_y + 1))
+                elif k == curses.KEY_UP:
+                    cursor_y_content = min(
+                        len(self.framerate.keys()), max(0, cursor_y_content - 1)
+                    )
+                    if cursor_y_content <= height - 5:
+                        cursor_y = min(height - 2, max(2, cursor_y - 1))
+
+                # Render title
+                stdscr.attron(curses.color_pair(4))
+                stdscr.addstr(0, 0, "Pipeline:")
+                stdscr.addstr(0, 9, " " + " ".join(self.args.pipeline)[:width - 10])
+                stdscr.attroff(curses.color_pair(4))
+
+                # Render headers
+                stdscr.attron(curses.color_pair(1))
+                stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
+                stdscr.addstr(
+                    1, width // 2,
+                    "Framerate" + (" " * (width // 2 - 9))
+                )
+                stdscr.attroff(curses.color_pair(1))
+
+                # Render values
+                stdscr.attron(curses.color_pair(2))
+
+                offset = max(cursor_y_content - height + 3 + 1, 0)
+                keys = list(self.framerate.keys())
+                for i in range(2, min(height, len(keys) - offset + 2)):
+                    key = keys[i - 2 + offset]
+
+                    if i == cursor_y:
+                        stdscr.attroff(curses.color_pair(2))
+                        stdscr.attron(curses.color_pair(1))
+
+                    stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
+                    stdscr.addstr(
+                        i, width // 2,
+                        str(self.framerate[key]) +
+                        (" " * (width // 2 - len(str(self.framerate[key])) - 1))
+                    )
+
+                    if i == cursor_y:
+                        stdscr.attroff(curses.color_pair(1))
+                        stdscr.attron(curses.color_pair(2))
+
+                stdscr.attroff(curses.color_pair(2))
+
+                # Render status bar
+                statusbarstr = (
+                    "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
+                    " | uptime: {:.2f}s | 'f' filter: {}"
+                ).format(
+                    time.time() - self.start_time,
+                    self.pattern_string_fps
+                )[-1 * width + 1:]
+                stdscr.attron(curses.color_pair(3))
+                stdscr.addstr(height-1, 0, statusbarstr)
+                stdscr.addstr(
+                    height-1, len(statusbarstr),
+                    " " * (width - len(statusbarstr) - 1)
+                )
+                stdscr.attroff(curses.color_pair(3))
+
+                # Move curser
+                stdscr.move(cursor_y, cursor_x)
+            if self.panel == self.PANEL_QUEUE:
+                if k == curses.KEY_DOWN:
+                    cursor_y_content = min(
+                        len(self.queue_level.keys()), max(0, cursor_y_content + 1)
+                    )
+                    cursor_y = min(height - 2, max(2, cursor_y + 1))
+                elif k == curses.KEY_UP:
+                    cursor_y_content = min(
+                        len(self.queue_level.keys()), max(0, cursor_y_content - 1)
+                    )
+                    if cursor_y_content <= height - 5:
+                        cursor_y = min(height - 2, max(2, cursor_y - 1))
+                elif k == curses.KEY_RIGHT:
+                    cursor_x = min(width - 1, max(0, cursor_x + 1))
+                elif k == curses.KEY_LEFT:
+                    cursor_x = min(width - 1, max(0, cursor_x - 1))
+
+                # Render title
+                stdscr.attron(curses.color_pair(4))
+                stdscr.addstr(0, 0, "Pipeline:")
+                stdscr.addstr(0, 9, " " + " ".join(self.args.pipeline)[:width - 10])
+                stdscr.attroff(curses.color_pair(4))
+
+                # Render headers
+                stdscr.attron(curses.color_pair(1))
+                stdscr.addstr(1, 0, "Element" + (" " * (width // 2 - 7)))
+                stdscr.addstr(
+                    1, width // 2,
+                    "QueueLevel" + (" " * (width // 2 - 10))
+                )
+                stdscr.attroff(curses.color_pair(1))
+
+                # Render values
+                stdscr.attron(curses.color_pair(2))
+
+                offset = max(cursor_y_content - height + 3 + 1, 0)
+                keys = list(self.queue_level.keys())
+                for i in range(2, min(height, len(keys) - offset + 2)):
+                    key = keys[i - 2 + offset]
+
+                    if i == cursor_y:
+                        stdscr.attroff(curses.color_pair(2))
+                        stdscr.attron(curses.color_pair(1))
+
+                    stdscr.addstr(i, 0, key + (" " * (width // 2 - len(key))))
+                    text = self.queue_level[key][0] + "/" + self.queue_level[key][1]
+                    stdscr.addstr(
+                        i, width // 2,
+                        text +
+                        (" " * (width // 2 - len(text) - 1))
+                    )
+
+                    if i == cursor_y:
+                        stdscr.attroff(curses.color_pair(1))
+                        stdscr.attron(curses.color_pair(2))
+
+                stdscr.attroff(curses.color_pair(2))
+
+                # Render status bar
+                statusbarstr = (
+                    "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
+                    " | uptime: {:.2f}s | 'f' filter: {}"
+                ).format(
+                    time.time() - self.start_time,
+                    self.pattern_string_queue
+                )[-1 * width + 1:]
+                stdscr.attron(curses.color_pair(3))
+                stdscr.addstr(height-1, 0, statusbarstr)
+                stdscr.addstr(
+                    height-1, len(statusbarstr),
+                    " " * (width - len(statusbarstr) - 1)
+                )
+                stdscr.attroff(curses.color_pair(3))
+
+                # Move curser
+                stdscr.move(cursor_y, cursor_x)
+            elif self.panel == self.PANEL_RAW:
+                # Render title
+                stdscr.attron(curses.color_pair(4))
+                stdscr.addstr(0, 0, "Pipeline:")
+                stdscr.addstr(0, 9, " " + " ".join(self.args.pipeline)[:width - 10])
+                stdscr.attroff(curses.color_pair(4))
+
+                # Render raw outputs
+                for i in range(min(height - 2, len(self.raw))):
+                    text = self.raw[-1 * min((height - 2 - i), len(self.raw))]
+                    stdscr.addstr(i + 1, 0, text[:width])
+
+                # Render status bar
+                statusbarstr = (
+                    "'q' exit | '0' FPS | '1' Queue | '2' Raw" +
+                    " | uptime: {:.2f}s"
+                ).format(
+                    time.time() - self.start_time
+                )
+                stdscr.attron(curses.color_pair(3))
+                stdscr.addstr(height-1, 0, statusbarstr)
+                stdscr.addstr(
+                    height-1, len(statusbarstr),
+                    " " * (width - len(statusbarstr) - 1)
+                )
+                stdscr.attroff(curses.color_pair(3))
+
+            # Refresh the screen
+            stdscr.refresh()
+
+            # Wait for next input
+            stdscr.timeout(int(min(1 / self.args.referesh_rate, .5) * 10e2))
+            k = stdscr.getch()
+            curses.napms(int(1000 / 120))
+
+        close = True
+
+    def _initialize_update_thread(self, process, args):
+        thread = threading.Thread(
+            target=self._update_values,
+            args=(process,)
+        )
+        thread.daemon = True
+        thread.start()
 
 
-def _initialize_update_thread(process, args):
-    thread = threading.Thread(
-        target=_update_values,
-        args=(process,)
-    )
-    thread.daemon = True
-    thread.start()
+    def _run_command(self, args):
+        env = os.environ.copy()
+        env["GST_DEBUG"] = "GST_TRACER:7"
+        env["GST_TRACERS"] = "framerate;queuelevel"
+        process = subprocess.Popen(
+            args.pipeline, stdout=subprocess.PIPE, env=env,
+            stderr=subprocess.STDOUT
+        )
 
+        self.start_time = time.time()
 
-def _run_command(args):
-    global start_time
+        return process
 
-    env = os.environ.copy()
-    env["GST_DEBUG"] = "GST_TRACER:7"
-    env["GST_TRACERS"] = "framerate;queuelevel"
-    process = subprocess.Popen(
-        args.pipeline, stdout=subprocess.PIPE, env=env,
-        stderr=subprocess.STDOUT
-    )
+    def start(self):
+        self.args = self._get_arguments()
 
-    start_time = time.time()
+        process = self._run_command(self.args)
 
-    return process
+        self._initialize_update_thread(process, self.args)
+
+        curses.wrapper(self.draw_menu)
+
+        process.kill()
 
 
 if __name__ == "__main__":
-    args = _get_arguments()
-
-    process = _run_command(args)
-
-    _initialize_update_thread(process, args)
-
-    curses.wrapper(draw_menu)
-
-    process.kill()
+    sharktop = SharkTop()
+    sharktop.start()
+    
