@@ -50,6 +50,9 @@ sharktop gst-launch-1.0 uridecodebin uri="rtsp://wowzaec2demo.streamlock.net/vod
 sharktop python run_pipeline.py
 ```
 
+## Urgent issues
+1. Add PID attach documentation to readme
+
 ## Issues and future work
 1. Install sharktop inside the dockerfile by default
 2. A serious refactor is required
