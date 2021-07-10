@@ -58,6 +58,7 @@ sharktop python run_pipeline.py
 5. Add images to the readme
 6. Sort the lists
 7. Upload to pypi
+8. Add version argument
 
 ## Contributors
 1. Hamid Mohammadi <sandstormeatwo@gmail.com>
