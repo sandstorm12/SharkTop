@@ -37,13 +37,13 @@ class SharkTop(object):
         # Properties
         self.args = None
         self.start_time = None
-        
+
         # Filters
         self.pattern_string_fps = None
         self.pattern_string_queue = None
         self.filter_pattern_fps = None
         self.filter_pattern_queue = None
-        
+
         # State
         self.close = False
         self.bar = self.BAR_NORMAL
@@ -92,7 +92,7 @@ class SharkTop(object):
 
     def _parse_queue(self, line):
         matched = False
-        
+
         search_queue = self.PATTERN_QUEUE_LEVEL.search(
             line
         )
@@ -443,15 +443,14 @@ class SharkTop(object):
         curses.curs_set(0)
 
         pressed_key = 0
-        cursor_x = 0
         cursor_y = 2
         cursor_y_content = 0
-        
+
         self._clear_refresh(stdscr)
         self._initialize_colors()
 
-        while not (pressed_key == ord('q') and \
-                self.bar == self.BAR_NORMAL):
+        while not (pressed_key == ord('q') and
+                   self.bar == self.BAR_NORMAL):
             height, width = self._initialize_window(stdscr)
 
             if self.bar == self.BAR_NORMAL:
@@ -492,7 +491,6 @@ class SharkTop(object):
         thread.daemon = True
         thread.start()
 
-
     def _run_command(self, args):
         env = os.environ.copy()
         env["GST_DEBUG"] = "GST_TRACER:7"
@@ -521,4 +519,3 @@ class SharkTop(object):
 if __name__ == "__main__":
     sharktop = SharkTop()
     sharktop.start()
-    
