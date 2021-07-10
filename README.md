@@ -59,6 +59,8 @@ sharktop python run_pipeline.py
 6. Sort the lists
 7. Upload to pypi
 8. Add version argument
+9. Attach to other GstShark processes
+10. Add mouse support
 
 ## Contributors
 1. Hamid Mohammadi <sandstormeatwo@gmail.com>
