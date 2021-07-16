@@ -10,7 +10,7 @@ def read_requirements(path='./requirements.txt'):
 
 setup(
     name="SharkTop",
-    version="1.0.0",
+    version="2.0.0",
     author="Hamid Mohammadi",
     author_email="sandstormeatwo@gmail.com",
     description="Curses-based UI for GstShark",

@@ -36,7 +36,8 @@ RUN apt-get -y --no-install-recommends install \
     libcairo2-dev \
     gir1.2-gstreamer-1.0 \
     python3-gi \
-    python-gi-dev
+    python-gi-dev \
+    psmisc
     
 RUN git clone https://github.com/jackersson/gstreamer-python.git gp0 && \
 cd gp0 && \

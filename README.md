@@ -10,9 +10,15 @@ FPS Panel                  | QueueLevel Panel
 
 This is a personal project in the development phase. I'll be happy to read your bug-reports, issues, suggestions, or feature requests in the issues section.
 
-## How to install
+## Installation
 
-1. Install GStreamer and GstShark
+### Prerequisites
+1. GStreamer 1.x
+2. GstShark
+3. psmisc (apt install psmisc)
+4. Python 3.x
+
+### Install prerequisites
 
 Use dockerfile or refer to the instructions inside dockerfile for standalone installation
 
@@ -22,36 +28,43 @@ docker build -f dockerfile_gstreamer_gstshark_x86 -t sharktop .
 docker run -it --rm -v $(pwd):/src sharktop bash
 ```
 
-2. Install sharktop
-
-install by cloning:
-```bash
-git clone https://github.com/sandstorm12/SharkTop.git sharktop
-cd sharktop
-python3 -m pip install sharktop
-```
+### Install sharktop
 
 install directly using pip:
 ```bash
 python3 -m pip install git+https://github.com/sandstorm12/SharkTop.git
 ```
 
-## How to use
+## Usage
 
+Intercepting currently running pipeline:
 ```bash
-sharktop [pipeline or pipeline launching code]
+# Launch your pipeline with GstShark enabled and requireed tracers selected
+GST_DEBUG="GST_TRACER:7" GST_TRACERS="framerate;queuelevel" [pipeline or pipeline launching code]
 
-sharktop gst-launch-1.0 videotestsrc ! fakesink sync=True
+GST_DEBUG="GST_TRACER:7" GST_TRACERS="framerate;queuelevel" gst-launch-1.0 uridecodebin uri="rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov" ! queue ! videoconvert ! fakesink sync=True -p "queue|videoconvert"
 
-sharktop gst-launch-1.0 uridecodebin uri="rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov" ! queue ! videoconvert ! fakesink sync=True
+# Find the gstreamer process's pid using ps, top, htop, or other tools
+ps -aux | grep gst-launch-1.0
 
-sharktop gst-launch-1.0 uridecodebin uri="rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov" ! queue ! videoconvert ! fakesink sync=True -p "queue|videoconvert"
+sharktop -p [gstreamer process pid]
+```
 
-sharktop python run_pipeline.py
+Launching pipeline using sharktop:
+```bash
+sharktop -i [pipeline or pipeline launching code]
+
+sharktop -i gst-launch-1.0 videotestsrc ! fakesink sync=True
+
+sharktop -i gst-launch-1.0 uridecodebin uri="rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov" ! queue ! videoconvert ! fakesink sync=True
+
+sharktop -i gst-launch-1.0 uridecodebin uri="rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov" ! queue ! videoconvert ! fakesink sync=True -p "queue|videoconvert"
+
+sharktop -i python run_pipeline.py
 ```
 
 ## Urgent issues
-1. Add PID attach documentation to readme
+1. [Nothing yet]
 
 ## Issues and future work
 1. Install sharktop inside the dockerfile by default

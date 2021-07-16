@@ -32,9 +32,6 @@ class SharkTop(object):
     PATTERN_ANSI = re.compile(
         r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'
     )
-    PATTERN_STRACE = re.compile(
-        r'[read|write]\(\d+, \"(.*?[^\"]+)'
-    )
 
     def __init__(self):
         # Properties
@@ -70,11 +67,6 @@ class SharkTop(object):
                 break
 
             line = line.decode("utf-8")
-
-            if args.pid != -1:
-                line = self._parse_strace(line)
-                if line is None:
-                    continue
 
             line = self.PATTERN_ANSI.sub('', line)
 
@@ -129,13 +121,13 @@ class SharkTop(object):
         parser = argparse.ArgumentParser()
         group = parser.add_mutually_exclusive_group(required=True)
         group.add_argument(
-            '-i', '--pid',
+            '-p', '--pid',
             help='PID of the GstShark enabled process',
             type=int,
             default=-1
         )
         group.add_argument(
-            '-p', '--pipeline',
+            '-i', '--pipeline',
             type=str, nargs='+',
             help='Command to run GStreamer pipeline',
             default=None
@@ -549,7 +541,7 @@ class SharkTop(object):
         return process
 
     def _attach_pid(self, args):
-        command = f"strace -fp {args.pid} -s 1000"
+        command = f"peekfd -c -t -d -n {args.pid} 0 1 2"
         process = subprocess.Popen(
             command.split(), stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
