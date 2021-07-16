@@ -37,13 +37,13 @@ class SharkTop(object):
         # Properties
         self.args = None
         self.start_time = None
-        
+
         # Filters
         self.pattern_string_fps = None
         self.pattern_string_queue = None
         self.filter_pattern_fps = None
         self.filter_pattern_queue = None
-        
+
         # State
         self.close = False
         self.bar = self.BAR_NORMAL
@@ -54,7 +54,7 @@ class SharkTop(object):
         self.framerate = {}
         self.queue_level = {}
 
-    def _update_values(self, process):
+    def _update_values(self, process, args):
         self.filter_pattern_fps = re.compile(self.pattern_string_fps)
         self.filter_pattern_queue = \
             re.compile(self.pattern_string_queue)
@@ -68,13 +68,23 @@ class SharkTop(object):
 
             line = line.decode("utf-8")
 
-            self._add_to_raw_output(self.PATTERN_ANSI.sub('', line))
+            line = self.PATTERN_ANSI.sub('', line)
+
+            self._add_to_raw_output(line)
 
             not self._parse_fps(line) and not self._parse_queue(line)
 
     def _add_to_raw_output(self, text):
         self.raw.append(text)
         self.raw = self.raw[-200:]
+
+    def _parse_strace(self, line):
+        pruned_line = None
+        search_strace = self.PATTERN_STRACE.search(line)
+        if search_strace is not None:
+            pruned_line = search_strace.group(1)
+        
+        return pruned_line
 
     def _parse_fps(self, line):
         matched = False
@@ -92,7 +102,7 @@ class SharkTop(object):
 
     def _parse_queue(self, line):
         matched = False
-        
+
         search_queue = self.PATTERN_QUEUE_LEVEL.search(
             line
         )
@@ -109,6 +119,19 @@ class SharkTop(object):
 
     def _get_arguments(self):
         parser = argparse.ArgumentParser()
+        group = parser.add_mutually_exclusive_group(required=True)
+        group.add_argument(
+            '-p', '--pid',
+            help='PID of the GstShark enabled process',
+            type=int,
+            default=-1
+        )
+        group.add_argument(
+            '-i', '--pipeline',
+            type=str, nargs='+',
+            help='Command to run GStreamer pipeline',
+            default=None
+        )
         parser.add_argument(
             '-r', '--referesh_rate',
             help='Update rate per second',
@@ -116,20 +139,15 @@ class SharkTop(object):
             default=2
         )
         parser.add_argument(
-            '-p', '--pattern',
+            '-f', '--filter',
             help='Pattern to match for the output',
             type=str,
             default=r".*"
         )
-        parser.add_argument(
-            'pipeline', metavar='Pipeline description or launcher code',
-            type=str, nargs='+',
-            help='Command to run GStreamer pipeline'
-        )
         args = parser.parse_args()
 
-        self.pattern_string_fps = args.pattern
-        self.pattern_string_queue = args.pattern
+        self.pattern_string_fps = args.filter
+        self.pattern_string_queue = args.filter
 
         return args
 
@@ -228,10 +246,16 @@ class SharkTop(object):
 
     def _render_title_fps(self, stdscr, width):
         stdscr.attron(curses.color_pair(4))
-        stdscr.addstr(0, 0, "Pipeline:")
-        stdscr.addstr(
-            0, 9, " " + " ".join(self.args.pipeline)[:width - 10]
-        )
+        if self.args.pid == -1:
+            stdscr.addstr(0, 0, "Pipeline:")
+            stdscr.addstr(
+                0, 9, " ".join(self.args.pipeline)[:width - 10]
+            )
+        else:
+            stdscr.addstr(0, 0, "PID:")
+            stdscr.addstr(
+                0, 4, " " + str(self.args.pid)[:width - 5]
+            )
         stdscr.attroff(curses.color_pair(4))
 
     def _render_headers_fps(self, stdscr, width):
@@ -318,10 +342,16 @@ class SharkTop(object):
 
     def _render_title_queue(self, stdscr, width):
         stdscr.attron(curses.color_pair(4))
-        stdscr.addstr(0, 0, "Pipeline:")
-        stdscr.addstr(
-            0, 9, " " + " ".join(self.args.pipeline)[:width - 10]
-        )
+        if self.args.pid == -1:
+            stdscr.addstr(0, 0, "Pipeline:")
+            stdscr.addstr(
+                0, 9, " ".join(self.args.pipeline)[:width - 10]
+            )
+        else:
+            stdscr.addstr(0, 0, "PID:")
+            stdscr.addstr(
+                0, 4, " " + str(self.args.pid)[:width - 5]
+            )
         stdscr.attroff(curses.color_pair(4))
 
     def _render_headers_queue(self, stdscr, width):
@@ -381,10 +411,16 @@ class SharkTop(object):
     def _render_panel_raw(self, stdscr, width, height):
         # Render title
         stdscr.attron(curses.color_pair(4))
-        stdscr.addstr(0, 0, "Pipeline:")
-        stdscr.addstr(
-            0, 9, " " + " ".join(self.args.pipeline)[:width - 10]
-        )
+        if self.args.pid == -1:
+            stdscr.addstr(0, 0, "Pipeline:")
+            stdscr.addstr(
+                0, 9, " ".join(self.args.pipeline)[:width - 10]
+            )
+        else:
+            stdscr.addstr(0, 0, "PID:")
+            stdscr.addstr(
+                0, 4, " " + str(self.args.pid)[:width - 5]
+            )
         stdscr.attroff(curses.color_pair(4))
 
         # Render raw outputs
@@ -443,15 +479,14 @@ class SharkTop(object):
         curses.curs_set(0)
 
         pressed_key = 0
-        cursor_x = 0
         cursor_y = 2
         cursor_y_content = 0
-        
+
         self._clear_refresh(stdscr)
         self._initialize_colors()
 
-        while not (pressed_key == ord('q') and \
-                self.bar == self.BAR_NORMAL):
+        while not (pressed_key == ord('q') and
+                   self.bar == self.BAR_NORMAL):
             height, width = self._initialize_window(stdscr)
 
             if self.bar == self.BAR_NORMAL:
@@ -487,11 +522,10 @@ class SharkTop(object):
     def _initialize_update_thread(self, process, args):
         thread = threading.Thread(
             target=self._update_values,
-            args=(process,)
+            args=(process, args,)
         )
         thread.daemon = True
         thread.start()
-
 
     def _run_command(self, args):
         env = os.environ.copy()
@@ -506,10 +540,25 @@ class SharkTop(object):
 
         return process
 
+    def _attach_pid(self, args):
+        command = f"peekfd -c -t -d -n {args.pid} 0 1 2"
+        process = subprocess.Popen(
+            command.split(), stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+
+        self.start_time = time.time()
+
+        return process
+
     def start(self):
         self.args = self._get_arguments()
 
-        process = self._run_command(self.args)
+        process = None
+        if self.args.pid != -1:
+            process = self._attach_pid(self.args)
+        else:
+            process = self._run_command(self.args)
 
         self._initialize_update_thread(process, self.args)
 
@@ -521,4 +570,3 @@ class SharkTop(object):
 if __name__ == "__main__":
     sharktop = SharkTop()
     sharktop.start()
-    
