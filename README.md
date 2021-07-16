@@ -16,7 +16,7 @@ This is a personal project in the development phase. I'll be happy to read your 
 ### Prerequisites
 1. GStreamer 1.x
 2. GstShark
-3. psmisc (apt install psmisc)
+3. Psmisc (apt install psmisc)
 4. Python 3.x
 
 ### Install prerequisites
