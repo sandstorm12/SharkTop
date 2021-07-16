@@ -1,6 +1,7 @@
 # SharkTop
 
-A Python Curses-based UI for GstShark
+A Python Curses-based UI for GstShark.
+Displays information by launching a pipeline using GstShark or attaching to a currently running GStreamer+GstShark pipeline.
 
 FPS Panel                  | QueueLevel Panel
 :-------------------------:|:-------------------------:
@@ -37,7 +38,7 @@ python3 -m pip install git+https://github.com/sandstorm12/SharkTop.git
 
 ## Usage
 
-Intercepting currently running pipeline:
+Intercepting currently running pipeline (based on peekfd):
 ```bash
 # Launch your pipeline with GstShark enabled and requireed tracers selected
 GST_DEBUG="GST_TRACER:7" GST_TRACERS="framerate;queuelevel" [pipeline or pipeline launching code]
