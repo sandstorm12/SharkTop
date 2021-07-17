@@ -1,6 +1,4 @@
 #!/usr/bin/python3
-# Based on example by https://gist.github.com/claymcleod
-
 
 import os
 import re
@@ -83,7 +81,7 @@ class SharkTop(object):
         search_strace = self.PATTERN_STRACE.search(line)
         if search_strace is not None:
             pruned_line = search_strace.group(1)
-        
+
         return pruned_line
 
     def _parse_fps(self, line):
@@ -143,6 +141,16 @@ class SharkTop(object):
             help='Pattern to match for the output',
             type=str,
             default=r".*"
+        )
+        parser.add_argument(
+            '-nq', '--no_queuelevel',
+            help='Do not add queuelevel tracer.',
+            action='store_true'
+        )
+        parser.add_argument(
+            '-nf', '--no_framerate',
+            help='Do not add framerate tracer.',
+            action='store_true'
         )
         args = parser.parse_args()
 
@@ -527,10 +535,19 @@ class SharkTop(object):
         thread.daemon = True
         thread.start()
 
-    def _run_command(self, args):
+    def _initialize_env(self, args):
         env = os.environ.copy()
         env["GST_DEBUG"] = "GST_TRACER:7"
-        env["GST_TRACERS"] = "framerate;queuelevel"
+        env["GST_TRACERS"] = ""
+        if not args.no_queuelevel:
+            env["GST_TRACERS"] += "queuelevel;"
+        elif not args.no_framerate:
+            env["GST_TRACERS"] += "framerate;"
+
+        return env
+
+    def _run_command(self, args):
+        env = self._initialize_env(args)
         process = subprocess.Popen(
             args.pipeline, stdout=subprocess.PIPE, env=env,
             stderr=subprocess.STDOUT

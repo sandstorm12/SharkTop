@@ -11,6 +11,10 @@ FPS Panel                  | QueueLevel Panel
 
 This is a personal project in the development phase. I'll be happy to read your bug-reports, issues, suggestions, or feature requests in the issues section.
 
+## Caution
+
+Using GstShark in release code is dangerous. GstShark might cause unexpected behaviour in your pipeline and even cause segmentation fault.
+
 ## Installation
 
 ### Prerequisites
