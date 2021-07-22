@@ -66,7 +66,7 @@ sharktop -i python run_pipeline.py
 ```
 
 ## Urgent issues
-1. [Nothing yet]
+1. Remove the redundant image folder
 
 ## Issues and future work
 1. Install sharktop inside the dockerfile by default
