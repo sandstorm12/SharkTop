@@ -79,6 +79,7 @@ sharktop -i python run_pipeline.py
 8. Add version argument
 9. Attach to other GstShark processes
 10. Add mouse support
+11. Print readily runable pipeline
 
 ## Contributors
 1. Hamid Mohammadi <sandstormeatwo@gmail.com>
