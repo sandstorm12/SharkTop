@@ -69,7 +69,7 @@ sharktop -i python run_pipeline.py
 ```
 
 ## Urgent issues
-1. [Nothing yet]
+1. Add executable pipeline to the debug output
 
 ## Issues and future work
 1. Install sharktop inside the dockerfile by default
@@ -82,6 +82,7 @@ sharktop -i python run_pipeline.py
 8. Add version argument
 9. Attach to other GstShark processes
 10. Add mouse support
+11. Use gif instead of image
 
 ## Contributors
 1. Hamid Mohammadi <sandstormeatwo@gmail.com>
